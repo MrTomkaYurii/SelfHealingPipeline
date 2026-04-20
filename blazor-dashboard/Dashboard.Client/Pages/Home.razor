@@ -1,0 +1,100 @@
+@page "/"
+@inject HttpClient Http
+@inject NavigationManager Navigation
+
+<PageTitle>Pipeline Runs — Yelp Dashboard</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-1">Pipeline Runs</MudText>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+    Кількість запусків: @_runs.Count
+</MudText>
+
+@if (_loading)
+{
+    <div class="d-flex justify-center align-center" style="height: 300px;">
+        <MudProgressCircular Indeterminate="true" Color="Color.Primary" Size="Size.Large" />
+    </div>
+}
+else if (_error != null)
+{
+    <MudAlert Severity="Severity.Error">@_error</MudAlert>
+}
+else if (_runs.Count == 0)
+{
+    <MudAlert Severity="Severity.Info">
+        JSON файли не знайдено в папці <code>airflow-pipeline/output/</code>.
+    </MudAlert>
+}
+else
+{
+    <MudTable Items="_runs" Hover="true" Striped="true" T="PipelineRunSummary"
+              OnRowClick="OnRowClick" RowClass="cursor-pointer" Elevation="2">
+        <HeaderContent>
+            <MudTh><MudTableSortLabel SortBy="new Func<PipelineRunSummary, object>(x => x.Timestamp)">Дата запуску</MudTableSortLabel></MudTh>
+            <MudTh>Batch Size</MudTh>
+            <MudTh>Offset</MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<PipelineRunSummary, object>(x => x.Processed)">Оброблено</MudTableSortLabel></MudTh>
+            <MudTh>Успішних</MudTh>
+            <MudTh>Вилікуваних</MudTh>
+            <MudTh>Деградованих</MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<PipelineRunSummary, object>(x => x.SuccessRate)">Success Rate</MudTableSortLabel></MudTh>
+            <MudTh>Health Status</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Дата">@context.Timestamp.ToString("yyyy-MM-dd HH:mm:ss")</MudTd>
+            <MudTd DataLabel="Batch">@context.BatchSize</MudTd>
+            <MudTd DataLabel="Offset">@context.Offset</MudTd>
+            <MudTd DataLabel="Оброблено">@context.Processed</MudTd>
+            <MudTd DataLabel="Успішних">
+                <MudText Color="Color.Success">@context.Success</MudText>
+            </MudTd>
+            <MudTd DataLabel="Вилікуваних">
+                <MudText Color="@(context.Healed > 0 ? Color.Warning : Color.Default)">@context.Healed</MudText>
+            </MudTd>
+            <MudTd DataLabel="Деградованих">
+                <MudText Color="@(context.Degraded > 0 ? Color.Error : Color.Default)">@context.Degraded</MudText>
+            </MudTd>
+            <MudTd DataLabel="Rate">@context.SuccessRate.ToString("P1")</MudTd>
+            <MudTd DataLabel="Health">
+                <MudChip T="string" Color="@GetHealthColor(context.HealthStatus)"
+                         Size="Size.Small" Variant="Variant.Filled">
+                    @context.HealthStatus
+                </MudChip>
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    private bool _loading = true;
+    private string? _error;
+    private List<PipelineRunSummary> _runs = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _runs = await Http.GetFromJsonAsync<List<PipelineRunSummary>>("api/pipelineruns") ?? new();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Помилка завантаження: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void OnRowClick(TableRowClickEventArgs<PipelineRunSummary> args)
+    {
+        Navigation.NavigateTo($"/run/{Uri.EscapeDataString(args.Item!.FileName)}");
+    }
+
+    private Color GetHealthColor(string status) => status switch
+    {
+        "HEALTHY"  => Color.Success,
+        "WARNING"  => Color.Warning,
+        _          => Color.Error
+    };
+}

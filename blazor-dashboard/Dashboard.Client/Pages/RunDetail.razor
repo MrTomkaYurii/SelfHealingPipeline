@@ -1,0 +1,415 @@
+@page "/run/{Filename}"
+@inject HttpClient Http
+@inject NavigationManager Navigation
+
+<PageTitle>@(_run == null ? "Деталі запуску" : _run.RunInfo.Timestamp.ToString("yyyy-MM-dd HH:mm")) — Dashboard</PageTitle>
+
+@if (_loading)
+{
+    <div class="d-flex justify-center align-center" style="height: 400px;">
+        <MudProgressCircular Indeterminate="true" Color="Color.Primary" Size="Size.Large" />
+    </div>
+}
+else if (_run == null)
+{
+    <MudAlert Severity="Severity.Error" Class="mt-4">Запуск не знайдено або помилка завантаження.</MudAlert>
+    <MudButton Class="mt-3" Variant="Variant.Outlined" OnClick="@(() => Navigation.NavigateTo("/"))">
+        ← Назад до списку
+    </MudButton>
+}
+else
+{
+    <div class="d-flex align-center gap-2 mb-4 flex-wrap">
+        <MudIconButton Icon="@Icons.Material.Filled.ArrowBack"
+                       OnClick="@(() => Navigation.NavigateTo("/"))"
+                       Variant="Variant.Outlined" />
+        <MudText Typo="Typo.h5">
+            Запуск @_run.RunInfo.Timestamp.ToString("yyyy-MM-dd HH:mm:ss")
+        </MudText>
+        <MudChip T="string" Color="@GetHealthColor(HealthStatus)" Variant="Variant.Filled" Size="Size.Medium">
+            @HealthStatus
+        </MudChip>
+    </div>
+
+    <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true">
+
+        <!-- ═══════════════════ TAB 1: ОГЛЯД ═══════════════════ -->
+        <MudTabPanel Text="Огляд" Icon="@Icons.Material.Filled.Dashboard">
+
+            <!-- 4 summary cards -->
+            <MudGrid Class="mb-4">
+                <MudItem xs="12" sm="6" md="3">
+                    <MudCard Elevation="3">
+                        <MudCardContent Class="d-flex flex-column align-center pa-4">
+                            <MudIcon Icon="@Icons.Material.Filled.Checklist" Color="Color.Primary" Size="Size.Large" />
+                            <MudText Typo="Typo.h3" Class="mt-1">@_run.Totals.Processed</MudText>
+                            <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Оброблено</MudText>
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudCard Elevation="3">
+                        <MudCardContent Class="d-flex flex-column align-center pa-4">
+                            <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Large" />
+                            <MudText Typo="Typo.h3" Class="mt-1" Color="Color.Success">@_run.Totals.Success</MudText>
+                            <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Успішних</MudText>
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudCard Elevation="3">
+                        <MudCardContent Class="d-flex flex-column align-center pa-4">
+                            <MudIcon Icon="@Icons.Material.Filled.AutoFixHigh" Color="Color.Warning" Size="Size.Large" />
+                            <MudText Typo="Typo.h3" Class="mt-1" Color="Color.Warning">@_run.Totals.Healed</MudText>
+                            <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Вилікуваних</MudText>
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudCard Elevation="3">
+                        <MudCardContent Class="d-flex flex-column align-center pa-4">
+                            <MudIcon Icon="@Icons.Material.Filled.ErrorOutline" Color="Color.Error" Size="Size.Large" />
+                            <MudText Typo="Typo.h3" Class="mt-1" Color="Color.Error">@_run.Totals.Degraded</MudText>
+                            <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Деградованих</MudText>
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+            </MudGrid>
+
+            <!-- Charts row -->
+            <MudGrid Class="mb-4">
+                <!-- Pie chart: sentiment distribution -->
+                <MudItem xs="12" md="5">
+                    <MudPaper Elevation="2" Class="pa-4" Style="min-height: 320px;">
+                        <MudText Typo="Typo.h6" Class="mb-3">Розподіл тональності</MudText>
+                        <MudChart T="double" ChartType="ChartType.Pie"
+                                  InputData="@SentimentValues"
+                                  InputLabels="@SentimentLabels"
+                                  ChartOptions="@_pieOptions"
+                                  Width="100%" Height="260px" />
+                    </MudPaper>
+                </MudItem>
+
+                <!-- Bar chart: star–sentiment correlation -->
+                <MudItem xs="12" md="7">
+                    <MudPaper Elevation="2" Class="pa-4" Style="min-height: 320px;">
+                        <MudText Typo="Typo.h6" Class="mb-3">Кореляція зірок і тональності</MudText>
+                        <MudChart T="double" ChartType="ChartType.StackedBar"
+                                  ChartSeries="@StarChartSeries"
+                                  XAxisLabels="@StarLabels"
+                                  ChartOptions="@_barOptions"
+                                  Width="100%" Height="260px" />
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+
+            <!-- Progress bars -->
+            <MudPaper Elevation="2" Class="pa-4 mb-4">
+                <MudText Typo="Typo.h6" Class="mb-3">Показники ефективності</MudText>
+                <MudGrid>
+                    <MudItem xs="12" md="4">
+                        <MudText Typo="Typo.body2" Class="mb-1">
+                            Успішність: <b>@_run.Rates.SuccessRate.ToString("P1")</b>
+                        </MudText>
+                        <MudProgressLinear Color="Color.Success"
+                                           Value="@(_run.Rates.SuccessRate * 100)"
+                                           Size="Size.Large" Rounded="true" Class="mb-1" />
+                    </MudItem>
+                    <MudItem xs="12" md="4">
+                        <MudText Typo="Typo.body2" Class="mb-1">
+                            Healing: <b>@_run.Rates.HealingRate.ToString("P1")</b>
+                        </MudText>
+                        <MudProgressLinear Color="Color.Warning"
+                                           Value="@(_run.Rates.HealingRate * 100)"
+                                           Size="Size.Large" Rounded="true" Class="mb-1" />
+                    </MudItem>
+                    <MudItem xs="12" md="4">
+                        <MudText Typo="Typo.body2" Class="mb-1">
+                            Деградація: <b>@_run.Rates.DegradationRate.ToString("P1")</b>
+                        </MudText>
+                        <MudProgressLinear Color="Color.Error"
+                                           Value="@(_run.Rates.DegradationRate * 100)"
+                                           Size="Size.Large" Rounded="true" Class="mb-1" />
+                    </MudItem>
+                </MudGrid>
+            </MudPaper>
+
+            <!-- Confidence -->
+            <MudPaper Elevation="2" Class="pa-4">
+                <MudText Typo="Typo.h6" Class="mb-3">Середня впевненість моделі</MudText>
+                <MudGrid>
+                    <MudItem xs="12" sm="4">
+                        <MudChip T="string" Color="Color.Success" Variant="Variant.Outlined" Icon="@Icons.Material.Filled.CheckCircle">
+                            Success: @_run.AverageConfidence.Success.ToString("P1")
+                        </MudChip>
+                    </MudItem>
+                    <MudItem xs="12" sm="4">
+                        <MudChip T="string" Color="Color.Warning" Variant="Variant.Outlined" Icon="@Icons.Material.Filled.AutoFixHigh">
+                            Healed: @_run.AverageConfidence.Healed.ToString("P1")
+                        </MudChip>
+                    </MudItem>
+                    <MudItem xs="12" sm="4">
+                        <MudChip T="string" Color="Color.Error" Variant="Variant.Outlined" Icon="@Icons.Material.Filled.ErrorOutline">
+                            Degraded: @_run.AverageConfidence.Degraded.ToString("P1")
+                        </MudChip>
+                    </MudItem>
+                </MudGrid>
+            </MudPaper>
+        </MudTabPanel>
+
+        <!-- ═══════════════════ TAB 2: ВІДГУКИ ═══════════════════ -->
+        <MudTabPanel Text="Відгуки" Icon="@Icons.Material.Filled.RateReview"
+                     BadgeData="@_run.Results.Count" BadgeColor="Color.Info">
+
+            <!-- Filters -->
+            <MudGrid Class="mb-3">
+                <MudItem xs="12" sm="4" md="3">
+                    <MudSelect T="string" Label="Тональність" @bind-Value="_sentimentFilter"
+                               Variant="Variant.Outlined" Dense="true">
+                        <MudSelectItem Value="@("All")">Всі</MudSelectItem>
+                        <MudSelectItem Value="@("POSITIVE")">POSITIVE</MudSelectItem>
+                        <MudSelectItem Value="@("NEGATIVE")">NEGATIVE</MudSelectItem>
+                        <MudSelectItem Value="@("NEUTRAL")">NEUTRAL</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="8" md="9">
+                    <MudTextField @bind-Value="_searchText"
+                                  Label="Пошук по тексту відгуку"
+                                  Variant="Variant.Outlined"
+                                  Adornment="Adornment.Start"
+                                  AdornmentIcon="@Icons.Material.Filled.Search"
+                                  Immediate="true"
+                                  Margin="Margin.Dense" />
+                </MudItem>
+            </MudGrid>
+
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
+                Показано: @FilteredReviews.Count() / @_run.Results.Count
+            </MudText>
+
+            <MudTable Items="@FilteredReviews" Dense="true" Hover="true" Striped="true"
+                      FixedHeader="true" Height="520px" Breakpoint="Breakpoint.Xs" Elevation="2">
+                <HeaderContent>
+                    <MudTh Style="min-width:300px">Текст відгуку</MudTh>
+                    <MudTh>Зірки</MudTh>
+                    <MudTh>Sentiment</MudTh>
+                    <MudTh>Впевненість</MudTh>
+                    <MudTh>Статус</MudTh>
+                    <MudTh>Дата</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Текст">
+                        <MudTooltip Text="@context.Text" Placement="Placement.Top" Arrow="true">
+                            <MudText Typo="Typo.body2" Style="max-width:320px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:block;">
+                                @context.Text
+                            </MudText>
+                        </MudTooltip>
+                    </MudTd>
+                    <MudTd DataLabel="Зірки">
+                        @for (int i = 0; i < (int)context.Stars; i++)
+                        {
+                            <MudIcon Icon="@Icons.Material.Filled.Star" Color="Color.Warning" Size="Size.Small" />
+                        }
+                    </MudTd>
+                    <MudTd DataLabel="Sentiment">
+                        <MudChip T="string" Color="@GetSentimentColor(context.PredictedSentiment)"
+                                 Size="Size.Small" Variant="Variant.Filled">
+                            @context.PredictedSentiment
+                        </MudChip>
+                    </MudTd>
+                    <MudTd DataLabel="Впевненість">@context.Confidence.ToString("P0")</MudTd>
+                    <MudTd DataLabel="Статус">
+                        <MudChip T="string" Size="Size.Small"
+                                 Color="@(context.HealingApplied ? Color.Warning : Color.Default)"
+                                 Variant="Variant.Text">
+                            @context.Status
+                        </MudChip>
+                    </MudTd>
+                    <MudTd DataLabel="Дата">@context.Metadata.Date[..10]</MudTd>
+                </RowTemplate>
+            </MudTable>
+        </MudTabPanel>
+
+        <!-- ═══════════════════ TAB 3: HEALING REPORT ═══════════════════ -->
+        <MudTabPanel Text="Healing Report" Icon="@Icons.Material.Filled.AutoFixHigh"
+                     BadgeData="@HealedReviews.Count()" BadgeColor="Color.Warning">
+
+            <!-- Healing statistics chips -->
+            @if (_run.HealingStatistics.Any())
+            {
+                <MudPaper Elevation="1" Class="pa-3 mb-4">
+                    <MudText Typo="Typo.subtitle2" Class="mb-2">Загальна статистика healing:</MudText>
+                    @foreach (var kv in _run.HealingStatistics)
+                    {
+                        <MudChip T="string" Color="Color.Info" Icon="@Icons.Material.Filled.Build"
+                                 Variant="Variant.Outlined" Class="mr-1 mb-1">
+                            @kv.Key: @kv.Value
+                        </MudChip>
+                    }
+                </MudPaper>
+            }
+
+            @if (!HealedReviews.Any())
+            {
+                <MudAlert Severity="Severity.Info">
+                    У цьому запуску немає вилікуваних відгуків.
+                </MudAlert>
+            }
+            else
+            {
+                @foreach (var review in HealedReviews)
+                {
+                    <MudCard Elevation="3" Class="mb-4">
+                        <MudCardHeader>
+                            <CardHeaderContent>
+                                <div class="d-flex align-center gap-2 flex-wrap">
+                                    <MudAlert Severity="Severity.Warning" Dense="true" Class="pa-1 flex-grow-1">
+                                        <b>Тип помилки:</b> @(review.ErrorType ?? "N/A")
+                                    </MudAlert>
+                                </div>
+                            </CardHeaderContent>
+                            <CardHeaderActions>
+                                <MudChip T="string" Color="Color.Info" Icon="@Icons.Material.Filled.Build"
+                                         Variant="Variant.Filled" Size="Size.Small">
+                                    @(review.HealingAction ?? "N/A")
+                                </MudChip>
+                                <MudChip T="string" Color="@GetSentimentColor(review.PredictedSentiment)"
+                                         Variant="Variant.Filled" Size="Size.Small">
+                                    @review.PredictedSentiment
+                                </MudChip>
+                                <MudText Typo="Typo.caption" Class="ml-2">
+                                    @review.Confidence.ToString("P0") впевненість
+                                </MudText>
+                            </CardHeaderActions>
+                        </MudCardHeader>
+                        <MudCardContent>
+                            <MudGrid>
+                                <MudItem xs="12" md="6">
+                                    <MudText Typo="Typo.subtitle2" Color="Color.Error" Class="mb-1">
+                                        Оригінальний текст:
+                                    </MudText>
+                                    <MudPaper Class="pa-3"
+                                              Style="border-left: 4px solid var(--mud-palette-error); background: rgba(244,67,54,0.07); min-height: 80px;">
+                                        <MudText Typo="Typo.body2">
+                                            @(review.OriginalText ?? review.Text)
+                                        </MudText>
+                                    </MudPaper>
+                                </MudItem>
+                                <MudItem xs="12" md="6">
+                                    <MudText Typo="Typo.subtitle2" Color="Color.Success" Class="mb-1">
+                                        Виправлений текст:
+                                    </MudText>
+                                    <MudPaper Class="pa-3"
+                                              Style="border-left: 4px solid var(--mud-palette-success); background: rgba(76,175,80,0.07); min-height: 80px;">
+                                        <MudText Typo="Typo.body2">@review.Text</MudText>
+                                    </MudPaper>
+                                </MudItem>
+                            </MudGrid>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2">
+                                @review.Stars ★ · @review.Metadata.Date · @review.ReviewId
+                            </MudText>
+                        </MudCardContent>
+                    </MudCard>
+                }
+            }
+        </MudTabPanel>
+
+    </MudTabs>
+}
+
+@code {
+    [Parameter] public string Filename { get; set; } = "";
+
+    private bool _loading = true;
+    private PipelineRun? _run;
+    private string _sentimentFilter = "All";
+    private string _searchText = "";
+
+    private readonly ChartOptions _pieOptions = new()
+    {
+        ChartPalette = ["#4CAF50", "#f44336", "#9E9E9E"]
+    };
+
+    private readonly ChartOptions _barOptions = new()
+    {
+        ChartPalette = ["#4CAF50", "#f44336", "#9E9E9E"]
+    };
+
+    // ── computed helpers ──
+
+    private string HealthStatus => _run == null ? "N/A"
+        : _run.Rates.SuccessRate >= 0.95 ? "HEALTHY"
+        : _run.Rates.SuccessRate >= 0.80 ? "WARNING"
+        : "CRITICAL";
+
+    private double[] SentimentValues => _run == null ? []
+        : [(double)_run.SentimentDistribution.Positive,
+           (double)_run.SentimentDistribution.Negative,
+           (double)_run.SentimentDistribution.Neutral];
+
+    private string[] SentimentLabels => ["POSITIVE", "NEGATIVE", "NEUTRAL"];
+
+    private string[] StarLabels => _run?.StarSentimentCorrelation
+        .Keys.OrderBy(k => double.Parse(k, System.Globalization.CultureInfo.InvariantCulture))
+        .Select(k => $"★{k.Split('.')[0]}")
+        .ToArray() ?? [];
+
+    private List<ChartSeries<double>> StarChartSeries
+    {
+        get
+        {
+            if (_run == null) return [];
+            var ordered = _run.StarSentimentCorrelation
+                .OrderBy(kv => double.Parse(kv.Key, System.Globalization.CultureInfo.InvariantCulture))
+                .ToList();
+            return
+            [
+                new ChartSeries<double> { Name = "POSITIVE", Data = ordered.Select(kv => (double)kv.Value.Positive).ToArray() },
+                new ChartSeries<double> { Name = "NEGATIVE", Data = ordered.Select(kv => (double)kv.Value.Negative).ToArray() },
+                new ChartSeries<double> { Name = "NEUTRAL",  Data = ordered.Select(kv => (double)kv.Value.Neutral).ToArray()  }
+            ];
+        }
+    }
+
+    private IEnumerable<ReviewResult> FilteredReviews =>
+        (_run?.Results ?? [])
+        .Where(r => _sentimentFilter == "All" || r.PredictedSentiment == _sentimentFilter)
+        .Where(r => string.IsNullOrEmpty(_searchText) ||
+                    r.Text.Contains(_searchText, StringComparison.OrdinalIgnoreCase));
+
+    private IEnumerable<ReviewResult> HealedReviews =>
+        _run?.Results.Where(r => r.HealingApplied) ?? [];
+
+    // ── lifecycle ──
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        _run = null;
+        try
+        {
+            _run = await Http.GetFromJsonAsync<PipelineRun>($"api/pipelineruns/{Uri.EscapeDataString(Filename)}");
+        }
+        catch { }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    // ── helpers ──
+
+    private static Color GetSentimentColor(string sentiment) => sentiment switch
+    {
+        "POSITIVE" => Color.Success,
+        "NEGATIVE" => Color.Error,
+        _          => Color.Default
+    };
+
+    private static Color GetHealthColor(string status) => status switch
+    {
+        "HEALTHY" => Color.Success,
+        "WARNING" => Color.Warning,
+        _         => Color.Error
+    };
+}
