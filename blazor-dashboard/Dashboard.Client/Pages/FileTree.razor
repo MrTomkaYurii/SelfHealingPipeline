@@ -1,0 +1,40 @@
+@page "/files"
+@inject HttpClient Http
+
+<PageTitle>Файлова структура — Dashboard</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-1">Файлова структура Pipeline</MudText>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+    airflow-pipeline/
+</MudText>
+
+@if (_loading)
+{
+    <div class="d-flex justify-center mt-8">
+        <MudProgressCircular Indeterminate="true" Color="Color.Primary" Size="Size.Large" />
+    </div>
+}
+else if (_root == null)
+{
+    <MudAlert Severity="Severity.Warning">Директорію не знайдено або помилка завантаження.</MudAlert>
+}
+else
+{
+    <MudPaper Elevation="2" Class="pa-4">
+        <MudTreeView T="string" Hover="true" Dense="false">
+            <FileTreeItem Node="_root" Depth="0" />
+        </MudTreeView>
+    </MudPaper>
+}
+
+@code {
+    private bool _loading = true;
+    private FileNode? _root;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try   { _root = await Http.GetFromJsonAsync<FileNode>("api/filetree"); }
+        catch { }
+        finally { _loading = false; }
+    }
+}

@@ -177,3 +177,13 @@ public class PipelineRunSummary
     public double SuccessRate { get; set; }
     public string HealthStatus { get; set; } = "HEALTHY";
 }
+
+public class FileNode
+{
+    public string Name { get; set; } = "";
+    public string FullPath { get; set; } = "";
+    public bool IsDirectory { get; set; }
+    public long? SizeBytes { get; set; }
+    public DateTime LastModified { get; set; }
+    public List<FileNode> Children { get; set; } = new();
+}

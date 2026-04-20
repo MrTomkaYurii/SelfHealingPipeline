@@ -1,0 +1,109 @@
+@page "/login"
+@inject AuthStateService Auth
+@inject NavigationManager Navigation
+
+<PageTitle>Вхід — Dashboard</PageTitle>
+
+<div class="d-flex justify-center align-center" style="min-height: 80vh;">
+    <MudPaper Elevation="6" Class="pa-8" Style="width: 420px; max-width: 96%;">
+
+        <div class="d-flex justify-center mb-3">
+            <MudAvatar Color="Color.Primary" Size="Size.Large">
+                <MudIcon Icon="@Icons.Material.Filled.Psychology" Size="Size.Large" />
+            </MudAvatar>
+        </div>
+        <MudText Typo="Typo.h5" Align="Align.Center" Class="mb-1">
+            Yelp Sentiment Dashboard
+        </MudText>
+        <MudText Typo="Typo.caption" Color="Color.Secondary" Align="Align.Center" Class="mb-6 d-block">
+            Self-Healing Pipeline · Моніторинг
+        </MudText>
+
+        <MudDivider Class="mb-5" />
+
+        <MudTextField @bind-Value="_username"
+                      Label="Логін"
+                      Variant="Variant.Outlined"
+                      Adornment="Adornment.Start"
+                      AdornmentIcon="@Icons.Material.Filled.Person"
+                      Class="mb-4"
+                      Disabled="@_loading"
+                      OnKeyDown="@OnKey" />
+
+        <MudTextField @bind-Value="_password"
+                      Label="Пароль"
+                      Variant="Variant.Outlined"
+                      InputType="@_pwdInputType"
+                      Adornment="Adornment.End"
+                      AdornmentIcon="@_pwdIcon"
+                      OnAdornmentClick="TogglePassword"
+                      Class="mb-2"
+                      Disabled="@_loading"
+                      OnKeyDown="@OnKey" />
+
+        @if (_error != null)
+        {
+            <MudAlert Severity="Severity.Error" Dense="true" Class="mb-3">@_error</MudAlert>
+        }
+
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   FullWidth="true"
+                   Size="Size.Large"
+                   Class="mt-3"
+                   OnClick="Submit"
+                   Disabled="@_loading">
+            @if (_loading)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                <span>Перевірка...</span>
+            }
+            else
+            {
+                <MudIcon Icon="@Icons.Material.Filled.Login" Class="mr-2" />
+                <span>Увійти</span>
+            }
+        </MudButton>
+
+    </MudPaper>
+</div>
+
+@code {
+    private string _username = "";
+    private string _password = "";
+    private string? _error;
+    private bool _loading;
+
+    private bool _showPassword;
+    private InputType _pwdInputType => _showPassword ? InputType.Text : InputType.Password;
+    private string _pwdIcon => _showPassword
+        ? Icons.Material.Filled.VisibilityOff
+        : Icons.Material.Filled.Visibility;
+
+    protected override void OnInitialized()
+    {
+        if (Auth.IsAuthenticated)
+            Navigation.NavigateTo("/", replace: true);
+    }
+
+    private void TogglePassword() => _showPassword = !_showPassword;
+
+    private async Task OnKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await Submit();
+    }
+
+    private async Task Submit()
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_username) || string.IsNullOrWhiteSpace(_password))
+        {
+            _error = "Введіть логін та пароль";
+            return;
+        }
+        _loading = true;
+        await Task.Delay(500); // імітація запиту
+        Auth.Login(_username);
+        Navigation.NavigateTo("/", replace: true);
+    }
+}

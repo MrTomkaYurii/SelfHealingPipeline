@@ -1,37 +1,82 @@
 @inherits LayoutComponentBase
+@implements IDisposable
+@inject AuthStateService Auth
+@inject NavigationManager Navigation
 
 <MudThemeProvider IsDarkMode="true" />
 <MudPopoverProvider />
 <MudDialogProvider />
 <MudSnackbarProvider />
 
-<MudLayout>
-    <MudAppBar Elevation="1" Color="Color.Dark">
-        <MudIconButton Icon="@Icons.Material.Filled.Menu"
-                       Color="Color.Inherit"
-                       Edge="Edge.Start"
-                       OnClick="ToggleDrawer" />
-        <MudText Typo="Typo.h6" Class="ml-2">Yelp Sentiment Dashboard</MudText>
-        <MudSpacer />
-        <MudIcon Icon="@Icons.Material.Filled.Psychology" Color="Color.Secondary" Class="mr-2" />
-        <MudText Typo="Typo.body2" Color="Color.Secondary">Self-Healing Pipeline</MudText>
-    </MudAppBar>
+@if (!Auth.IsAuthenticated)
+{
+    @Body
+}
+else
+{
+    <MudLayout>
+        <MudAppBar Elevation="1" Color="Color.Dark">
+            <MudIconButton Icon="@Icons.Material.Filled.Menu"
+                           Color="Color.Inherit"
+                           Edge="Edge.Start"
+                           OnClick="ToggleDrawer" />
+            <MudText Typo="Typo.h6" Class="ml-2">Yelp Sentiment Dashboard</MudText>
+            <MudSpacer />
+            <MudIcon Icon="@Icons.Material.Filled.Person" Color="Color.Secondary" Class="mr-1" Size="Size.Small" />
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mr-3">@Auth.Username</MudText>
+            <MudTooltip Text="Вийти">
+                <MudIconButton Icon="@Icons.Material.Filled.Logout"
+                               Color="Color.Default"
+                               OnClick="Logout" />
+            </MudTooltip>
+        </MudAppBar>
 
-    <MudDrawer @bind-Open="_drawerOpen" Elevation="2" Variant="DrawerVariant.Responsive">
-        <MudDrawerHeader>
-            <MudText Typo="Typo.subtitle1" Class="mt-2"><b>Навігація</b></MudText>
-        </MudDrawerHeader>
-        <NavMenu />
-    </MudDrawer>
+        <MudDrawer @bind-Open="_drawerOpen" Elevation="2" Variant="DrawerVariant.Responsive">
+            <MudDrawerHeader>
+                <MudText Typo="Typo.subtitle1" Class="mt-2"><b>Навігація</b></MudText>
+            </MudDrawerHeader>
+            <NavMenu />
+        </MudDrawer>
 
-    <MudMainContent>
-        <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="pa-4">
-            @Body
-        </MudContainer>
-    </MudMainContent>
-</MudLayout>
+        <MudMainContent>
+            <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="pa-4">
+                @Body
+            </MudContainer>
+        </MudMainContent>
+    </MudLayout>
+}
 
 @code {
     private bool _drawerOpen = true;
+
+    protected override void OnInitialized()
+    {
+        Auth.StateChanged += OnAuthChanged;
+        RedirectIfNeeded();
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender) RedirectIfNeeded();
+    }
+
+    private void RedirectIfNeeded()
+    {
+        var uri = Navigation.Uri;
+        if (!Auth.IsAuthenticated && !uri.Contains("/login"))
+            Navigation.NavigateTo("/login", replace: true);
+    }
+
+    private void OnAuthChanged()
+    {
+        InvokeAsync(StateHasChanged);
+        if (!Auth.IsAuthenticated)
+            Navigation.NavigateTo("/login", replace: true);
+    }
+
     private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
+
+    private void Logout() => Auth.Logout();
+
+    public void Dispose() => Auth.StateChanged -= OnAuthChanged;
 }

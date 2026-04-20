@@ -1,0 +1,54 @@
+@using Dashboard.Client.Models
+
+<MudTreeViewItem T="string"
+                 Value="@Node.FullPath"
+                 Text="@Node.Name"
+                 Icon="@GetIcon()"
+                 IconColor="@GetIconColor()"
+                 EndText="@GetEndText()"
+                 EndTextTypo="Typo.caption"
+                 @bind-Expanded="_expanded">
+    @if (Node.IsDirectory)
+    {
+        @foreach (var child in Node.Children)
+        {
+            <FileTreeItem Node="@child" Depth="@(Depth + 1)" />
+        }
+    }
+</MudTreeViewItem>
+
+@code {
+    [Parameter, EditorRequired] public FileNode Node { get; set; } = null!;
+    [Parameter] public int Depth { get; set; }
+
+    private bool _expanded;
+
+    protected override void OnInitialized() => _expanded = Depth < 2;
+
+    private string GetIcon()
+    {
+        if (Node.IsDirectory) return Icons.Material.Filled.Folder;
+        return Node.Name.EndsWith(".json") ? Icons.Material.Filled.DataObject
+             : Node.Name.EndsWith(".py")   ? Icons.Material.Filled.Code
+             : Node.Name.EndsWith(".log")  ? Icons.Material.Filled.Assignment
+             : Node.Name.EndsWith(".db")   ? Icons.Material.Filled.Storage
+             : Icons.Material.Filled.InsertDriveFile;
+    }
+
+    private Color GetIconColor()
+    {
+        if (Node.IsDirectory) return Color.Warning;
+        if (Node.Name.EndsWith(".json")) return Color.Success;
+        if (Node.Name.EndsWith(".py"))   return Color.Info;
+        return Color.Default;
+    }
+
+    private string GetEndText()
+    {
+        if (Node.IsDirectory) return $"{Node.Children.Count} items";
+        if (Node.SizeBytes == null) return "";
+        if (Node.SizeBytes < 1024) return $"{Node.SizeBytes} B";
+        if (Node.SizeBytes < 1024 * 1024) return $"{Node.SizeBytes / 1024} KB";
+        return $"{Node.SizeBytes / 1024 / 1024} MB";
+    }
+}
