@@ -344,9 +344,16 @@ else
 
     private List<ChartSeries<double>> SentimentPieSeries => _run == null ? [] :
     [
-        new() { Name = "POSITIVE", Data = new double[] { (double)_run.SentimentDistribution.Positive } },
-        new() { Name = "NEGATIVE", Data = new double[] { (double)_run.SentimentDistribution.Negative } },
-        new() { Name = "NEUTRAL",  Data = new double[] { (double)_run.SentimentDistribution.Neutral  } }
+        new()
+        {
+            Name = "Розподіл",
+            Data = new double[]
+            {
+                (double)_run.SentimentDistribution.Positive,
+                (double)_run.SentimentDistribution.Negative,
+                (double)_run.SentimentDistribution.Neutral
+            }
+        }
     ];
 
     private string[] SentimentLabels => ["POSITIVE", "NEGATIVE", "NEUTRAL"];
