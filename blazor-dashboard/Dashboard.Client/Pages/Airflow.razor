@@ -1,0 +1,107 @@
+@page "/airflow"
+@inject HttpClient Http
+
+<PageTitle>Apache Airflow — Dashboard</PageTitle>
+
+@if (_checking)
+{
+    <div class="d-flex flex-column justify-center align-center" style="height: calc(100vh - 120px);">
+        <MudProgressCircular Indeterminate="true" Color="Color.Primary" Size="Size.Large" Class="mb-4" />
+        <MudText Color="Color.Secondary">Перевірка доступності Airflow...</MudText>
+    </div>
+}
+else if (!_available)
+{
+    <div class="d-flex flex-column justify-center align-center" style="height: calc(100vh - 120px);">
+        <MudIcon Icon="@Icons.Material.Filled.CloudOff" Color="Color.Error"
+                 Style="font-size: 72px;" Class="mb-4" />
+        <MudText Typo="Typo.h5" Class="mb-2">Airflow недоступний</MudText>
+        <MudText Color="Color.Secondary" Class="mb-5">
+            Сервіс на <code>@_airflowUrl</code> не відповів протягом 3 секунд.
+        </MudText>
+
+        <MudAlert Severity="Severity.Warning" Style="max-width: 560px;" Class="mb-4">
+            <MudText Typo="Typo.subtitle2" Class="mb-2">Необхідно запустити відповідний контейнер:</MudText>
+            <MudText Typo="Typo.body2" Class="mb-1">
+                Перейди до папки проекту і виконай:
+            </MudText>
+            <MudPaper Class="pa-3 mt-2" Style="background: #1e1e1e; border-radius: 4px;">
+                <code style="color: #4fc3f7; font-size: 13px;">
+                    cd C:\Git\SelfHealingPipeline\airflow-pipeline<br />
+                    docker-compose up -d
+                </code>
+            </MudPaper>
+        </MudAlert>
+
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.Refresh"
+                   OnClick="CheckAvailability">
+            Перевірити знову
+        </MudButton>
+    </div>
+}
+else
+{
+    <div style="height: calc(100vh - 80px); display: flex; flex-direction: column;">
+        <div class="d-flex align-center justify-space-between mb-2">
+            <MudText Typo="Typo.h6">
+                <MudIcon Icon="@Icons.Material.Filled.Air" Class="mr-2" Color="Color.Primary" />
+                Apache Airflow
+            </MudText>
+            <div class="d-flex align-center gap-2">
+                <MudChip T="string" Color="Color.Success" Size="Size.Small"
+                         Icon="@Icons.Material.Filled.Circle" Variant="Variant.Outlined">
+                    Online
+                </MudChip>
+                <MudTooltip Text="Відкрити в новій вкладці">
+                    <MudIconButton Icon="@Icons.Material.Filled.OpenInNew"
+                                   Size="Size.Small"
+                                   Href="@_airflowUrl"
+                                   Target="_blank" />
+                </MudTooltip>
+                <MudTooltip Text="Перезавантажити">
+                    <MudIconButton Icon="@Icons.Material.Filled.Refresh"
+                                   Size="Size.Small"
+                                   OnClick="ReloadFrame" />
+                </MudTooltip>
+            </div>
+        </div>
+
+        <iframe @key="_frameKey"
+                src="@_airflowUrl"
+                style="flex: 1; border: none; border-radius: 8px; width: 100%;"
+                title="Apache Airflow" />
+    </div>
+}
+
+@code {
+    private bool _checking = true;
+    private bool _available;
+    private string _airflowUrl = "http://localhost:8080/";
+    private int _frameKey;
+
+    protected override async Task OnInitializedAsync() => await CheckAvailability();
+
+    private async Task CheckAvailability()
+    {
+        _checking = true;
+        _available = false;
+        StateHasChanged();
+        try
+        {
+            var result = await Http.GetFromJsonAsync<AirflowStatus>("api/airflow/status");
+            _available = result?.Available ?? false;
+            _airflowUrl = result?.Url ?? _airflowUrl;
+        }
+        catch { }
+        finally
+        {
+            _checking = false;
+        }
+    }
+
+    private void ReloadFrame() => _frameKey++;
+
+    private record AirflowStatus(bool Available, string Url);
+}
