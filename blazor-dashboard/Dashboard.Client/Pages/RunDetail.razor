@@ -83,8 +83,8 @@ else
                     <MudPaper Elevation="2" Class="pa-4" Style="min-height: 320px;">
                         <MudText Typo="Typo.h6" Class="mb-3">Розподіл тональності</MudText>
                         <MudChart T="double" ChartType="ChartType.Pie"
-                                  InputData="@SentimentValues"
-                                  InputLabels="@SentimentLabels"
+                                  ChartSeries="@SentimentPieSeries"
+                                  ChartLabels="@SentimentLabels"
                                   ChartOptions="@_pieOptions"
                                   Width="100%" Height="260px" />
                     </MudPaper>
@@ -96,7 +96,7 @@ else
                         <MudText Typo="Typo.h6" Class="mb-3">Кореляція зірок і тональності</MudText>
                         <MudChart T="double" ChartType="ChartType.StackedBar"
                                   ChartSeries="@StarChartSeries"
-                                  XAxisLabels="@StarLabels"
+                                  ChartLabels="@StarLabels"
                                   ChartOptions="@_barOptions"
                                   Width="100%" Height="260px" />
                     </MudPaper>
@@ -325,12 +325,12 @@ else
     private string _sentimentFilter = "All";
     private string _searchText = "";
 
-    private readonly ChartOptions _pieOptions = new()
+    private readonly PieChartOptions _pieOptions = new()
     {
         ChartPalette = ["#4CAF50", "#f44336", "#9E9E9E"]
     };
 
-    private readonly ChartOptions _barOptions = new()
+    private readonly BarChartOptions _barOptions = new()
     {
         ChartPalette = ["#4CAF50", "#f44336", "#9E9E9E"]
     };
@@ -342,10 +342,12 @@ else
         : _run.Rates.SuccessRate >= 0.80 ? "WARNING"
         : "CRITICAL";
 
-    private double[] SentimentValues => _run == null ? []
-        : [(double)_run.SentimentDistribution.Positive,
-           (double)_run.SentimentDistribution.Negative,
-           (double)_run.SentimentDistribution.Neutral];
+    private List<ChartSeries<double>> SentimentPieSeries => _run == null ? [] :
+    [
+        new() { Name = "POSITIVE", Data = new double[] { (double)_run.SentimentDistribution.Positive } },
+        new() { Name = "NEGATIVE", Data = new double[] { (double)_run.SentimentDistribution.Negative } },
+        new() { Name = "NEUTRAL",  Data = new double[] { (double)_run.SentimentDistribution.Neutral  } }
+    ];
 
     private string[] SentimentLabels => ["POSITIVE", "NEGATIVE", "NEUTRAL"];
 
