@@ -358,24 +358,39 @@ else
 
     private string[] SentimentLabels => ["POSITIVE", "NEGATIVE", "NEUTRAL"];
 
-    private string[] StarLabels => _run?.StarSentimentCorrelation
-        .Keys.OrderBy(k => double.Parse(k, System.Globalization.CultureInfo.InvariantCulture))
-        .Select(k => $"★{k.Split('.')[0]}")
-        .ToArray() ?? [];
+    private static readonly int[] StarRatings = [1, 2, 3, 4, 5];
+
+    private string[] StarLabels => StarRatings.Select(s => $"★{s}").ToArray();
 
     private List<ChartSeries<double>> StarChartSeries
     {
         get
         {
             if (_run == null) return [];
-            var ordered = _run.StarSentimentCorrelation
-                .OrderBy(kv => double.Parse(kv.Key, System.Globalization.CultureInfo.InvariantCulture))
-                .ToList();
+            // compute from results[] — star_sentiment_correlation in JSON is incomplete
+            var groups = _run.Results
+                .GroupBy(r => (int)r.Stars)
+                .ToDictionary(g => g.Key, g => g.ToList());
             return
             [
-                new ChartSeries<double> { Name = "POSITIVE", Data = ordered.Select(kv => (double)kv.Value.Positive).ToArray() },
-                new ChartSeries<double> { Name = "NEGATIVE", Data = ordered.Select(kv => (double)kv.Value.Negative).ToArray() },
-                new ChartSeries<double> { Name = "NEUTRAL",  Data = ordered.Select(kv => (double)kv.Value.Neutral).ToArray()  }
+                new ChartSeries<double>
+                {
+                    Name = "POSITIVE",
+                    Data = StarRatings.Select(s => (double)(groups.TryGetValue(s, out var g)
+                        ? g.Count(r => r.PredictedSentiment == "POSITIVE") : 0)).ToArray()
+                },
+                new ChartSeries<double>
+                {
+                    Name = "NEGATIVE",
+                    Data = StarRatings.Select(s => (double)(groups.TryGetValue(s, out var g)
+                        ? g.Count(r => r.PredictedSentiment == "NEGATIVE") : 0)).ToArray()
+                },
+                new ChartSeries<double>
+                {
+                    Name = "NEUTRAL",
+                    Data = StarRatings.Select(s => (double)(groups.TryGetValue(s, out var g)
+                        ? g.Count(r => r.PredictedSentiment == "NEUTRAL") : 0)).ToArray()
+                }
             ];
         }
     }
