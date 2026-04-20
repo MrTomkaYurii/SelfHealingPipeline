@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  airflow:
+    build: .
+    command: standalone
+    user: "0:0"
+    environment:
+      - AIRFLOW_HOME=/opt/airflow
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=sqlite:////opt/airflow/airflow.db
+      - AIRFLOW__CORE__DAGS_FOLDER=/opt/airflow/dags
+      - PIPELINE_BASE_DIR=/opt/airflow
+      - PIPELINE_INPUT_FILE=/opt/airflow/input/yelp_academic_dataset_review.json
+      - PIPELINE_OUTPUT_DIR=/opt/airflow/output
+      - OLLAMA_HOST=http://host.docker.internal:11434
+      - OLLAMA_MODEL=llama3.2
+      - OLLAMA_TIMEOUT=120
+      - OLLAMA_RETRIES=3
+    ports:
+      - "8080:8080"
+    volumes:
+      - .:/opt/airflow
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
