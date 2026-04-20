@@ -34,7 +34,7 @@ else
     <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true">
 
         <!-- ═══════════════════ TAB 1: ОГЛЯД ═══════════════════ -->
-        <MudTabPanel Text="Огляд" Icon="@Icons.Material.Filled.Dashboard">
+        <MudTabPanel Text="Огляд" Icon="@Icons.Material.Filled.Dashboard" Class="pa-4">
 
             <!-- 4 summary cards -->
             <MudGrid Class="mb-4">
@@ -159,7 +159,7 @@ else
 
         <!-- ═══════════════════ TAB 2: ВІДГУКИ ═══════════════════ -->
         <MudTabPanel Text="Відгуки" Icon="@Icons.Material.Filled.RateReview"
-                     BadgeData="@_run.Results.Count" BadgeColor="Color.Info">
+                     BadgeData="@_run.Results.Count" BadgeColor="Color.Info" Class="pa-4">
 
             <!-- Filters -->
             <MudGrid Class="mb-3">
@@ -232,7 +232,7 @@ else
 
         <!-- ═══════════════════ TAB 3: HEALING REPORT ═══════════════════ -->
         <MudTabPanel Text="Healing Report" Icon="@Icons.Material.Filled.AutoFixHigh"
-                     BadgeData="@HealedReviews.Count()" BadgeColor="Color.Warning">
+                     BadgeData="@HealedReviews.Count()" BadgeColor="Color.Warning" Class="pa-4">
 
             <!-- Healing statistics chips -->
             @if (_run.HealingStatistics.Any())
