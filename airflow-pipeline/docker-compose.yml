@@ -17,6 +17,8 @@ services:
       - OLLAMA_MODEL=llama3.2
       - OLLAMA_TIMEOUT=120
       - OLLAMA_RETRIES=3
+      - AIRFLOW__FAB__COOKIE_SAMESITE=None
+      - AIRFLOW__FAB__COOKIE_SECURE=True
     ports:
       - "8080:8080"
     volumes:
