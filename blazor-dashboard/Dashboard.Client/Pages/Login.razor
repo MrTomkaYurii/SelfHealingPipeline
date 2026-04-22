@@ -37,13 +37,31 @@
                       Adornment="Adornment.End"
                       AdornmentIcon="@_pwdIcon"
                       OnAdornmentClick="TogglePassword"
-                      Class="mb-2"
+                      Class="@(_isRegister ? "mb-4" : "mb-2")"
                       Disabled="@_loading"
                       OnKeyDown="@OnKey" />
+
+        @if (_isRegister)
+        {
+            <MudTextField @bind-Value="_confirm"
+                          Label="Підтвердити пароль"
+                          Variant="Variant.Outlined"
+                          InputType="@_pwdInputType"
+                          Adornment="Adornment.End"
+                          AdornmentIcon="@_pwdIcon"
+                          OnAdornmentClick="TogglePassword"
+                          Class="mb-2"
+                          Disabled="@_loading"
+                          OnKeyDown="@OnKey" />
+        }
 
         @if (_error != null)
         {
             <MudAlert Severity="Severity.Error" Dense="true" Class="mb-3">@_error</MudAlert>
+        }
+        @if (_success != null)
+        {
+            <MudAlert Severity="Severity.Success" Dense="true" Class="mb-3">@_success</MudAlert>
         }
 
         <MudButton Variant="Variant.Filled"
@@ -56,7 +74,12 @@
             @if (_loading)
             {
                 <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
-                <span>Перевірка...</span>
+                <span>@(_isRegister ? "Реєстрація..." : "Перевірка...")</span>
+            }
+            else if (_isRegister)
+            {
+                <MudIcon Icon="@Icons.Material.Filled.PersonAdd" Class="mr-2" />
+                <span>Зареєструватися</span>
             }
             else
             {
@@ -65,14 +88,32 @@
             }
         </MudButton>
 
+        <MudDivider Class="my-4" />
+
+        <div class="d-flex justify-center">
+            @if (_isRegister)
+            {
+                <MudText Typo="Typo.body2" Class="mr-1">Вже маєте акаунт?</MudText>
+                <MudLink Typo="Typo.body2" OnClick="SwitchToLogin" Style="cursor:pointer">Увійти</MudLink>
+            }
+            else
+            {
+                <MudText Typo="Typo.body2" Class="mr-1">Немає акаунту?</MudText>
+                <MudLink Typo="Typo.body2" OnClick="SwitchToRegister" Style="cursor:pointer">Зареєструватися</MudLink>
+            }
+        </div>
+
     </MudPaper>
 </div>
 
 @code {
     private string _username = "";
     private string _password = "";
+    private string _confirm  = "";
     private string? _error;
+    private string? _success;
     private bool _loading;
+    private bool _isRegister;
 
     private bool _showPassword;
     private InputType _pwdInputType => _showPassword ? InputType.Text : InputType.Password;
@@ -88,6 +129,9 @@
 
     private void TogglePassword() => _showPassword = !_showPassword;
 
+    private void SwitchToRegister() { _isRegister = true;  _error = null; _success = null; }
+    private void SwitchToLogin()    { _isRegister = false; _error = null; _success = null; }
+
     private async Task OnKey(KeyboardEventArgs e)
     {
         if (e.Key == "Enter") await Submit();
@@ -96,14 +140,43 @@
     private async Task Submit()
     {
         _error = null;
+        _success = null;
+
         if (string.IsNullOrWhiteSpace(_username) || string.IsNullOrWhiteSpace(_password))
         {
             _error = "Введіть логін та пароль";
             return;
         }
+
         _loading = true;
-        await Task.Delay(500); // імітація запиту
-        Auth.Login(_username);
-        Navigation.NavigateTo("/", replace: true);
+        StateHasChanged();
+
+        try
+        {
+            if (_isRegister)
+            {
+                if (_password != _confirm)
+                {
+                    _error = "Паролі не співпадають";
+                    return;
+                }
+                var (ok, error) = await Auth.RegisterAsync(_username, _password);
+                if (!ok) { _error = error; return; }
+                _success = "Реєстрацію успішно завершено. Тепер увійдіть.";
+                _isRegister = false;
+                _password = "";
+                _confirm = "";
+            }
+            else
+            {
+                var (ok, error) = await Auth.LoginAsync(_username, _password);
+                if (!ok) { _error = error; return; }
+                Navigation.NavigateTo("/", replace: true);
+            }
+        }
+        finally
+        {
+            _loading = false;
+        }
     }
 }

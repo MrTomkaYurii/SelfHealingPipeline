@@ -10,6 +10,6 @@ builder.Services.AddScoped(sp => new HttpClient
 });
 
 builder.Services.AddMudServices();
-builder.Services.AddSingleton<AuthStateService>();
+builder.Services.AddScoped<AuthStateService>();
 
 await builder.Build().RunAsync();

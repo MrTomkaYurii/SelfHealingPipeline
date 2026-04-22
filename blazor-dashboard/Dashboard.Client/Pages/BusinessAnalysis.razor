@@ -1,0 +1,1740 @@
+@page "/business-analysis"
+@inject HttpClient Http
+@inject IJSRuntime JS
+@using Dashboard.Client.Models
+@implements IAsyncDisposable
+
+<PageTitle>Аналіз бізнесу — Yelp</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-1">Аналіз бізнесу</MudText>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+    Джерело: <code>yelp.duckdb</code>
+</MudText>
+
+<MudTabs ActivePanelIndex="@_activeTab"
+         ActivePanelIndexChanged="OnTabChanged"
+         Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4">
+    @* ════════════════════════════════════════════════════════════════
+       TAB 1 — Вибір бізнесу
+    ════════════════════════════════════════════════════════════════ *@
+    <MudTabPanel Text="Вибір бізнесу" Icon="@Icons.Material.Filled.Business">
+
+        <br />
+        @if (_loadError != null)
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-4">@_loadError</MudAlert>
+        }
+
+        <MudGrid Spacing="3">
+
+           @* ── Ліва колонка: список ── *@
+                <MudItem xs="12" md="5">
+                    <MudPaper Elevation="2" Class="pa-3"
+                            Style="height:680px; display:flex; flex-direction:column; overflow:hidden;">
+
+                        <div style="flex:0 0 auto;">
+                            <MudTextField Value="_searchText"
+                                        ValueChanged="@((string v) => _searchText = v)"
+                                        Placeholder="Пошук по назві або місту..."
+                                        Adornment="Adornment.Start"
+                                        AdornmentIcon="@(_searching
+                                            ? Icons.Material.Filled.HourglassEmpty
+                                            : Icons.Material.Filled.Search)"
+                                        Immediate="true"
+                                        DebounceInterval="400"
+                                        OnDebounceIntervalElapsed="SearchBusinesses"
+                                        Clearable="true"
+                                        Class="mb-2"
+                                        Variant="Variant.Outlined"
+                                        Margin="Margin.Dense" />
+                        </div>
+
+                        @if (_loadingBusinesses)
+                        {
+                            <div class="d-flex justify-center align-center flex-grow-1">
+                                <MudProgressCircular Indeterminate="true"
+                                                    Color="Color.Primary" Size="Size.Large" />
+                            </div>
+                        }
+                        else
+                        {
+                            <div style="flex:1 1 0; min-height:0; display:flex; flex-direction:column; overflow:hidden;">
+
+                                <div style="flex:0 0 auto;">
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-1">
+                                        @if (string.IsNullOrWhiteSpace(_searchText))
+                                        { <span>Топ @_businesses.Count за кількістю відгуків</span> }
+                                        else
+                                        { <span>Знайдено: @_businesses.Count</span> }
+                                        @if (_searching)
+                                        {
+                                            <MudProgressLinear Indeterminate="true" Color="Color.Primary"
+                                                            Size="Size.Small" Class="mt-1" />
+                                        }
+                                    </MudText>
+                                </div>
+
+                                <div style="flex:1 1 0; min-height:0; overflow-y:auto;">
+                                    @foreach (var biz in _businesses)
+                                    {
+                                        <div @onclick="() => SelectBusiness(biz)"
+                                            style="@GetItemStyle(biz) padding:10px 12px; cursor:pointer;
+                                                    border-bottom:1px solid rgba(255,255,255,0.06);
+                                                    transition:background 0.15s;">
+                                            <div style="font-weight:500; font-size:0.9rem; white-space:nowrap;
+                                                        overflow:hidden; text-overflow:ellipsis;">
+                                                @biz.Name
+                                            </div>
+                                            <div style="font-size:0.75rem; opacity:0.65; margin-top:2px;">
+                                                @biz.City, @biz.State &nbsp;·&nbsp;
+                                                ⭐ @biz.Stars.ToString("F1") &nbsp;·&nbsp;
+                                                @biz.ReviewCount відгуків
+                                            </div>
+                                        </div>
+                                    }
+                                    @if (_businesses.Count == 100)
+                                    {
+                                        <div class="pa-2 text-center">
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                                Показано перші 100 — введіть назву для уточнення
+                                            </MudText>
+                                        </div>
+                                    }
+                                </div>
+
+                            </div>
+                        }
+
+                    </MudPaper>
+                </MudItem>
+
+            @* ── Права колонка: деталі ── *@
+                <MudItem xs="12" md="7">
+                    @if (_selected == null)
+                    {
+                        <MudPaper Elevation="2" Class="pa-6 d-flex align-center justify-center"
+                                Style="height:680px;">
+                            <div class="text-center" style="opacity:0.4;">
+                                <MudIcon Icon="@Icons.Material.Filled.TouchApp"
+                                        Style="font-size:4rem;" Class="mb-3" />
+                                <MudText Typo="Typo.h6">Оберіть бізнес зі списку</MudText>
+                            </div>
+                        </MudPaper>
+                    }
+                    else
+                    {
+                        <MudPaper Elevation="2" Class="pa-4"
+                                Style="height:680px; overflow-y:auto;">
+
+                            <MudText Typo="Typo.h5" Class="mb-3">
+                                <MudIcon Icon="@Icons.Material.Filled.Business" Class="mr-2" />
+                                @_selected.Name
+                            </MudText>
+                            <MudDivider Class="mb-3" />
+
+                            <div class="d-flex flex-column gap-2 mb-4" style="font-size:0.95rem;">
+                                <div>
+                                    <MudIcon Icon="@Icons.Material.Filled.LocationOn"
+                                            Size="Size.Small" Class="mr-1" Color="Color.Secondary" />
+                                    @_selected.City, @_selected.State
+                                </div>
+                                <div>
+                                    <MudIcon Icon="@Icons.Material.Filled.Star"
+                                            Size="Size.Small" Class="mr-1" Color="Color.Warning" />
+                                    <strong>@_selected.Stars.ToString("F1")</strong> / 5.0
+                                    <MudRating ReadOnly="true"
+                                            SelectedValue="@((int)Math.Round(_selected.Stars))"
+                                            MaxValue="5" Size="Size.Small" Class="ml-2" />
+                                </div>
+                                <div>
+                                    <MudIcon Icon="@Icons.Material.Filled.ChatBubble"
+                                            Size="Size.Small" Class="mr-1" Color="Color.Secondary" />
+                                    <strong>@_selected.ReviewCount.ToString("N0")</strong> відгуків
+                                </div>
+                                @if (!string.IsNullOrWhiteSpace(_selected.Categories))
+                                {
+                                    <div style="display:flex; align-items:flex-start; gap:4px;">
+                                        <MudIcon Icon="@Icons.Material.Filled.Label"
+                                                Size="Size.Small" Class="mr-1 mt-1"
+                                                Color="Color.Secondary" />
+                                        <div style="flex:1;">
+                                            @foreach (var cat in _selected.Categories.Split(';',
+                                                StringSplitOptions.TrimEntries |
+                                                StringSplitOptions.RemoveEmptyEntries))
+                                            {
+                                                <MudChip T="string" Size="Size.Small"
+                                                        Variant="Variant.Outlined"
+                                                        Color="Color.Primary" Class="ma-1">
+                                                    @cat
+                                                </MudChip>
+                                            }
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+
+                            <MudDivider Class="mb-4" />
+
+                            @* Кнопка / прогрес / результат експорту *@
+                            @if (!_exporting && _exportResult == null)
+                            {
+                                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                                        Size="Size.Large" FullWidth="true"
+                                        StartIcon="@Icons.Material.Filled.FileDownload"
+                                        OnClick="ExportReviews">
+                                    Витягнути відгуки та створити JSON
+                                </MudButton>
+                            }
+                            else if (_exporting)
+                            {
+                                <MudPaper Elevation="0"
+                                        Class="pa-4 d-flex flex-column align-center gap-3"
+                                        Style="border:1px solid rgba(255,255,255,0.1); border-radius:8px;">
+                                    <MudProgressCircular Indeterminate="true"
+                                                        Color="Color.Primary" Size="Size.Medium" />
+                                    <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                        @_exportProgress
+                                    </MudText>
+                                    <MudButton Variant="Variant.Text" Color="Color.Error"
+                                            StartIcon="@Icons.Material.Filled.Cancel"
+                                            OnClick="CancelExport">
+                                        Скасувати
+                                    </MudButton>
+                                </MudPaper>
+                            }
+
+                            @if (_exportResult != null)
+                            {
+                                @if (!string.IsNullOrEmpty(_exportResult.Error))
+                                {
+                                    <MudAlert Severity="Severity.Warning" Class="mb-3">
+                                        @_exportResult.Error
+                                    </MudAlert>
+                                }
+                                else
+                                {
+                                    <MudAlert Severity="Severity.Success" Class="mb-3">
+                                        ✅ Файл створено успішно!
+                                    </MudAlert>
+
+                                    <MudPaper Elevation="1" Class="pa-3 mb-3"
+                                            Style="background:rgba(255,255,255,0.04);
+                                                    border-radius:8px; font-size:0.875rem;">
+                                        <div class="mb-1">
+                                            📄 <strong>Назва файлу:</strong> @_exportResult.FileName
+                                        </div>
+                                        <div class="mb-1" style="word-break:break-all;">
+                                            📁 <strong>Шлях:</strong>
+                                            <code style="font-size:0.8rem;">@_exportResult.FilePath</code>
+                                        </div>
+                                        <div class="mb-1">
+                                            💬 <strong>Записів:</strong>
+                                            @_exportResult.ReviewCount.ToString("N0") відгуків
+                                        </div>
+                                        <div>🕐 <strong>Створено:</strong> @_exportResult.CreatedAt</div>
+                                    </MudPaper>
+
+                                    <div class="d-flex gap-2 mb-4">
+                                        <MudButton Variant="Variant.Outlined" Color="Color.Primary"
+                                                StartIcon="@Icons.Material.Filled.ContentCopy"
+                                                OnClick="CopyPath">
+                                            Копіювати шлях
+                                        </MudButton>
+                                        <MudButton Variant="Variant.Text" Color="Color.Secondary"
+                                                StartIcon="@Icons.Material.Filled.Refresh"
+                                                OnClick="ResetExport">
+                                            Повторити
+                                        </MudButton>
+                                    </div>
+
+                                    <MudButton Variant="Variant.Filled" Color="Color.Secondary"
+                                            Size="Size.Large" FullWidth="true"
+                                            StartIcon="@Icons.Material.Filled.PlayArrow"
+                                            OnClick="GoToTab2">
+                                        🚀 Перейти до запуску DAG →
+                                    </MudButton>
+                                }
+                            }
+
+                        </MudPaper>
+                    }
+                </MudItem>
+        </MudGrid>
+    </MudTabPanel>
+
+    @* ════════════════════════════════════════════════════════════════
+       TAB 2 — Запуск DAG
+    ════════════════════════════════════════════════════════════════ *@
+
+    <MudTabPanel Text="Запуск DAG"
+                 Icon="@Icons.Material.Filled.PlayArrow"
+                 Disabled="@(!Tab2Available)">
+
+        <br />
+        @if (!Tab2Available)
+        {
+            <MudAlert Severity="Severity.Info">
+                Спочатку оберіть бізнес та витягніть відгуки на вкладці «Вибір бізнесу».
+            </MudAlert>
+        }
+        else
+        {
+            @* ── Інфо з вкладки 1 ── *@
+            <MudPaper Elevation="1" Class="pa-3 mb-4"
+                      Style="background:rgba(255,255,255,0.04); border-radius:8px;">
+                <div style="font-size:0.9rem;" class="d-flex flex-column gap-1">
+                    <div>
+                        📄 <strong>Файл:</strong> @_exportResult!.FileName
+                    </div>
+                    <div>
+                        💬 <strong>Відгуків:</strong> @_exportResult.ReviewCount.ToString("N0")
+                    </div>
+                </div>
+            </MudPaper>
+
+            @* ── Форма параметрів (тільки поки не запущено) ── *@
+            @if (!_dagRunning && !_dagDone && !_dagFailed && !_dagTriggering)
+            {
+                <MudPaper Elevation="2" Class="pa-4 mb-4">
+                    <MudText Typo="Typo.subtitle1" Class="mb-3">Параметри запуску</MudText>
+
+                    <MudTextField @bind-Value="_ollamaModel"
+                                  Label="Ollama модель"
+                                  Variant="Variant.Outlined"
+                                  Margin="Margin.Dense"
+                                  Class="mb-3" />
+
+                    <MudGrid Spacing="2" Class="mb-3">
+                        <MudItem xs="6">
+                            <MudNumericField @bind-Value="_batchSize"
+                                             Label="Batch size (0 = всі)"
+                                             Variant="Variant.Outlined"
+                                             Margin="Margin.Dense"
+                                             Min="0"
+                                             HelperText="@($"0 = всі ({_exportResult!.ReviewCount} відгуків)")" />
+                        </MudItem>
+                        <MudItem xs="6">
+                            <MudNumericField @bind-Value="_offset"
+                                             Label="Offset"
+                                             Variant="Variant.Outlined"
+                                             Margin="Margin.Dense"
+                                             Min="0"
+                                             HelperText="Пропустити перші N відгуків" />
+                        </MudItem>
+                    </MudGrid>
+
+                    <MudTextField Value="@_exportResult.FilePath"
+                                  Label="Вхідний файл (readonly)"
+                                  ReadOnly="true"
+                                  Variant="Variant.Outlined"
+                                  Margin="Margin.Dense"
+                                  Adornment="Adornment.Start"
+                                  AdornmentIcon="@Icons.Material.Filled.Lock"
+                                  Class="mb-4" />
+
+                    <MudButton Variant="Variant.Filled" Color="Color.Success"
+                               Size="Size.Large" FullWidth="true"
+                               StartIcon="@Icons.Material.Filled.RocketLaunch"
+                               OnClick="TriggerDag">
+                        🚀 Запустити DAG
+                    </MudButton>
+                </MudPaper>
+            }
+
+            @* ── Тригеримо (spinner) ── *@
+            @if (_dagTriggering)
+            {
+                <MudPaper Elevation="2" Class="pa-6 d-flex flex-column align-center gap-3 mb-4">
+                    <MudProgressCircular Indeterminate="true" Color="Color.Success" Size="Size.Large" />
+                    <MudText Color="Color.Secondary">Відправляємо DAG в Airflow...</MudText>
+                </MudPaper>
+            }
+
+            @* ── Прогрес виконання ── *@
+            @if (_dagRunning || _dagDone || _dagFailed || _userCancelled)
+            {
+                <MudPaper Elevation="2" Class="pa-4 mb-3">
+
+                    @* Статус *@
+                    <div class="d-flex align-center gap-2 mb-3">
+                        <MudText Typo="Typo.subtitle1">Статус:</MudText>
+                        @switch (_dagState)
+                        {
+                            case "queued":
+                                <MudChip T="string" Color="Color.Warning"  Icon="@Icons.Material.Filled.HourglassEmpty">queued</MudChip>
+                                break;
+                            case "running":
+                                <MudChip T="string" Color="Color.Info"    Icon="@Icons.Material.Filled.PlayCircle">running</MudChip>
+                                break;
+                            case "success":
+                                <MudChip T="string" Color="Color.Success" Icon="@Icons.Material.Filled.CheckCircle">success</MudChip>
+                                break;
+                            case "failed":
+                                <MudChip T="string" Color="Color.Error"   Icon="@Icons.Material.Filled.Cancel">failed</MudChip>
+                                break;
+                            default:
+                                <MudChip T="string" Color="Color.Default">@_dagState</MudChip>
+                                break;
+                        }
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            Run ID: @_dagRunId
+                        </MudText>
+                    </div>
+
+                    @* Прогрес бар *@
+                    @{
+                        int pct = _progTotal > 0 ? (int)(_progCurrent * 100.0 / _progTotal) : 0;
+                        int remaining = _progTotal > _progCurrent ? _progTotal - _progCurrent : 0;
+                        int estMinutes = (int)(remaining * 5.0 / 60);
+                    }
+                    <div class="d-flex justify-space-between mb-1">
+                        <MudText Typo="Typo.body2">Прогрес аналізу</MudText>
+                        <MudText Typo="Typo.body2">@pct%</MudText>
+                    </div>
+                    <MudProgressLinear Value="@pct"
+                                       Color="@(_dagState == "success" ? Color.Success
+                                               : _dagState == "failed"  ? Color.Error
+                                               : Color.Primary)"
+                                       Rounded="true" Size="Size.Large" Class="mb-2" />
+                    <div class="d-flex justify-space-between mb-3">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            Оброблено @_progCurrent з @_progTotal відгуків
+                        </MudText>
+                        @if (_dagState == "running" && estMinutes > 0)
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                ⏱ ~@estMinutes хв залишилось
+                            </MudText>
+                        }
+                    </div>
+
+                    @* Таймлайн тасків *@
+                    @if (_taskInstances.Count > 0)
+                    {
+                        <MudText Typo="Typo.subtitle2" Class="mb-2">Кроки DAG</MudText>
+                        <div class="d-flex flex-column gap-1 mb-3">
+                            @foreach (var task in _taskInstances)
+                            {
+                                <div class="d-flex align-center gap-2" style="font-size:0.85rem;">
+                                    @switch (task.State)
+                                    {
+                                        case "success":
+                                            <MudIcon Icon="@Icons.Material.Filled.CheckCircle"
+                                                     Color="Color.Success" Size="Size.Small" />
+                                            break;
+                                        case "running":
+                                            <MudProgressCircular Indeterminate="true"
+                                                                 Color="Color.Primary" Size="Size.Small" />
+                                            break;
+                                        case "failed":
+                                            <MudIcon Icon="@Icons.Material.Filled.Error"
+                                                     Color="Color.Error" Size="Size.Small" />
+                                            break;
+                                        default:
+                                            <MudIcon Icon="@Icons.Material.Filled.HourglassEmpty"
+                                                     Color="Color.Default" Size="Size.Small" />
+                                            break;
+                                    }
+                                    <span style="opacity:@(task.State == "none" ? "0.4" : "1")">
+                                        @task.TaskId
+                                    </span>
+                                    @if (task.State != "none" && task.State != "queued")
+                                    {
+                                        <MudText Typo="Typo.caption"
+                                                 Color="@(task.State == "success" ? Color.Success
+                                                         : task.State == "failed" ? Color.Error
+                                                         : Color.Primary)">
+                                            (@task.State)
+                                        </MudText>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+
+                    @* Лог *@
+                    @if (_logLines.Count > 0)
+                    {
+                        <MudText Typo="Typo.subtitle2" Class="mb-1">
+                            Лог <code>analyze_sentiment</code>
+                        </MudText>
+                        <div @ref="_logBox"
+                             style="height:200px; overflow-y:auto; font-family:monospace;
+                                    font-size:0.75rem; background:#111827; color:#d1fae5;
+                                    padding:10px; border-radius:6px; white-space:pre-wrap;">
+                            @foreach (var line in _logLines)
+                            {
+                                <div>@line</div>
+                            }
+                        </div>
+                    }
+
+                    @* Кнопка Скасувати *@
+                    @if (_dagRunning)
+                    {
+                        <div class="d-flex justify-end mt-3">
+                            <MudButton Variant="Variant.Outlined" Color="Color.Error"
+                                       StartIcon="@Icons.Material.Filled.Stop"
+                                       OnClick="CancelDag">
+                                ⛔ Скасувати
+                            </MudButton>
+                        </div>
+                    }
+                </MudPaper>
+
+                @* ── Скасовано ── *@
+                @if (_userCancelled)
+                {
+                    <MudAlert Severity="Severity.Warning" Class="mb-3">
+                        ⛔ DAG скасовано користувачем
+                    </MudAlert>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="ResetDag">
+                        Запустити знову
+                    </MudButton>
+                }
+
+                @* ── Успіх ── *@
+                @if (_dagDone && !_userCancelled)
+                {
+                    <MudAlert Severity="Severity.Success" Class="mb-3">
+                        ✅ DAG завершено успішно!
+                    </MudAlert>
+
+                    @if (_outputFile != null && string.IsNullOrEmpty(_outputFile.Error))
+                    {
+                        <MudPaper Elevation="1" Class="pa-3 mb-3"
+                                  Style="background:rgba(255,255,255,0.04); border-radius:8px;
+                                         font-size:0.875rem;">
+                            <div class="mb-1">
+                                📄 <strong>Файл результату:</strong> @_outputFile.FileName
+                            </div>
+                            <div class="mb-1" style="word-break:break-all;">
+                                📁 <strong>Повний шлях:</strong>
+                                <code style="font-size:0.8rem;">@_outputFile.FilePath</code>
+                            </div>
+                            @if (_dagDuration != null)
+                            {
+                                <div>⏱️ <strong>Час виконання:</strong> @_dagDuration</div>
+                            }
+                        </MudPaper>
+
+                        <div class="d-flex gap-2 mb-3">
+                            <MudButton Variant="Variant.Outlined" Color="Color.Primary"
+                                       StartIcon="@Icons.Material.Filled.ContentCopy"
+                                       OnClick="CopyOutputPath">
+                                Копіювати шлях
+                            </MudButton>
+                            <MudButton Variant="Variant.Filled" Color="Color.Secondary"
+                                       StartIcon="@Icons.Material.Filled.BarChart"
+                                       OnClick="GoToTab3">
+                                Перейти до аналітики бізнесу →
+                            </MudButton>
+                        </div>
+                    }
+                    else if (_outputFile?.Error is { } err)
+                    {
+                        <MudAlert Severity="Severity.Info" Class="mb-3">@err</MudAlert>
+                    }
+
+                    <MudButton Variant="Variant.Text" Color="Color.Secondary" OnClick="ResetDag">
+                        Запустити знову
+                    </MudButton>
+                }
+
+                @* ── Помилка ── *@
+                @if (_dagFailed && !_userCancelled)
+                {
+                    <MudAlert Severity="Severity.Error" Class="mb-3">
+                        ❌ DAG завершився з помилкою
+                    </MudAlert>
+                    @if (_logLines.Count > 0)
+                    {
+                        <MudPaper Elevation="1" Class="pa-2 mb-3"
+                                  Style="background:#1f1212; border-radius:6px; font-family:monospace;
+                                         font-size:0.75rem; color:#fca5a5; max-height:150px;
+                                         overflow-y:auto;">
+                            @foreach (var line in _logLines.Where(l => l.Contains("ERROR") || l.Contains("Error")))
+                            {
+                                <div>@line</div>
+                            }
+                        </MudPaper>
+                    }
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="ResetDag">
+                        Спробувати знову
+                    </MudButton>
+                }
+            }
+        }
+    </MudTabPanel>
+
+    @* ════════════════════════════════════════════════════════════════
+       TAB 3 — Аналітика
+    ════════════════════════════════════════════════════════════════ *@
+    <MudTabPanel Text="Аналітика" Icon="@Icons.Material.Filled.BarChart">
+
+        <br />
+
+        @* ── Блок вибору файлу результату ── *@
+        <MudPaper Elevation="1" Class="pa-3 mb-4"
+                  Style="background:rgba(255,255,255,0.04); border-radius:8px;">
+            @if (_fromDagRun && _outputFile != null)
+            {
+                <div class="d-flex align-center gap-2 flex-wrap">
+                    <MudIcon Icon="@Icons.Material.Filled.CheckCircle"
+                             Color="Color.Success" Size="Size.Small" />
+                    <MudText Typo="Typo.body2">
+                        <strong>Файл результату:</strong> @_outputFile.FileName
+                    </MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary"
+                             Style="word-break:break-all; opacity:0.65;">
+                        @_outputFile.FilePath
+                    </MudText>
+                </div>
+            }
+            else
+            {
+                <div class="d-flex align-center gap-3">
+                    <MudSelect T="ResultFileDto"
+                               Label="Оберіть файл результату"
+                               Value="_selectedResultFileDto"
+                               ValueChanged="OnResultFileSelected"
+                               Variant="Variant.Outlined"
+                               Margin="Margin.Dense"
+                               ToStringFunc="@(f => f?.FileName ?? "")"
+                               Style="flex:1; max-width:600px;">
+                        @foreach (var f in _availableResultFiles)
+                        {
+                            <MudSelectItem T="ResultFileDto" Value="f">@f.FileName</MudSelectItem>
+                        }
+                    </MudSelect>
+                </div>
+                @if (_availableResultFiles.Count == 0 && !_analyticsLoading)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Warning" Class="mt-2">
+                        Файлів результату не знайдено в папці output
+                    </MudText>
+                }
+            }
+        </MudPaper>
+
+        @* ── Контент аналітики ── *@
+        @if (_analyticsLoading)
+        {
+            <div class="d-flex flex-column align-center justify-center" style="min-height:300px; gap:16px;">
+                <MudProgressCircular Indeterminate="true" Color="Color.Primary" Size="Size.Large" />
+                <MudText Color="Color.Secondary">Завантаження аналітики...</MudText>
+            </div>
+        }
+        else if (_analyticsError != null)
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-4">@_analyticsError</MudAlert>
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary"
+                       OnClick="LoadAnalyticsAsync">Спробувати знову</MudButton>
+        }
+        else if (_summary == null)
+        {
+            <div class="d-flex flex-column align-center justify-center"
+                 style="min-height:280px; opacity:0.35; gap:12px;">
+                <MudIcon Icon="@Icons.Material.Filled.BarChart" Style="font-size:4rem;" />
+                <MudText Typo="Typo.h6">Оберіть файл результату для перегляду аналітики</MudText>
+            </div>
+        }
+        else
+        {
+            @* ── Метрики ── *@
+            <MudGrid Spacing="2" Class="mb-5">
+                <MudItem xs="12" sm="6" md="4" lg="2">
+                    <MudPaper Elevation="2" Class="pa-3">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">📊 Всього відгуків</MudText>
+                        <MudText Typo="Typo.h5" Class="my-1"><strong>@_summary.Total.ToString("N0")</strong></MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">100% проаналізовано</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="4" lg="2">
+                    <MudPaper Elevation="2" Class="pa-3">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">💚 Позитивних</MudText>
+                        <MudText Typo="Typo.h5" Class="my-1" Style="color:#4ade80"><strong>@_summary.Positive.ToString("N0")</strong></MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@($"{(double)_summary.Positive/Math.Max(_summary.Total,1)*100:F1}%")</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="4" lg="2">
+                    <MudPaper Elevation="2" Class="pa-3">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">🔴 Негативних</MudText>
+                        <MudText Typo="Typo.h5" Class="my-1" Style="color:#f87171"><strong>@_summary.Negative.ToString("N0")</strong></MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@($"{(double)_summary.Negative/Math.Max(_summary.Total,1)*100:F1}%")</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="4" lg="2">
+                    <MudPaper Elevation="2" Class="pa-3">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">⚪ Нейтральних</MudText>
+                        <MudText Typo="Typo.h5" Class="my-1"><strong>@_summary.Neutral.ToString("N0")</strong></MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@($"{(double)_summary.Neutral/Math.Max(_summary.Total,1)*100:F1}%")</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="4" lg="2">
+                    <MudPaper Elevation="2" Class="pa-3">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">🔧 Вилікувано</MudText>
+                        <MudText Typo="Typo.h5" Class="my-1" Style="color:#fbbf24"><strong>@_summary.Healed.ToString("N0")</strong></MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@($"{(double)_summary.Healed/Math.Max(_summary.Total,1)*100:F1}%")</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="4" lg="2">
+                    <MudPaper Elevation="2" Class="pa-3">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">📈 Впевненість</MudText>
+                        <MudText Typo="Typo.h5" Class="my-1" Style="color:#53c2f6"><strong>@($"{_summary.AvgConfidence*100:F1}%")</strong></MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">середня</MudText>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+
+            @* ════ Група 1: Sentiment аналіз ════ *@
+            <div class="d-flex align-center gap-3 mb-3 mt-2">
+                <MudText Typo="Typo.h6">Sentiment аналіз</MudText>
+                <div style="flex:1;height:1px;background:rgba(255,255,255,0.12);"></div>
+            </div>
+            <MudGrid Spacing="3" Class="mb-5">
+                <MudItem xs="12" md="5">
+                    <MudPaper Elevation="2" Class="pa-3 d-flex flex-column" Style="height:380px;">
+                        <MudText Typo="Typo.subtitle1" Class="mb-2">Розподіл sentiment</MudText>
+                        <div style="flex:1; min-height:0;">
+                            <MudChart T="double" ChartType="ChartType.Pie"
+                                      ChartSeries="@(new List<ChartSeries<double>>
+                                      {
+                                          new() { Name = "Sentiment", Data = new double[]
+                                          {
+                                              _summary.Positive,
+                                              _summary.Negative,
+                                              _summary.Neutral
+                                          }}
+                                      })"
+                                      ChartLabels="@(new[]{ "Позитивні", "Негативні", "Нейтральні" })"
+                                      LegendPalette="@(new[]{ "#4ade80", "#f87171", "#9ca3af" })"
+                                      Width="100%" Height="290px" />
+                        </div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1 d-block text-center">
+                            Загальний розподіл тональності відгуків
+                        </MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" md="7">
+                    <MudPaper Elevation="2" Class="pa-3 d-flex flex-column" Style="height:380px;">
+                        <MudText Typo="Typo.subtitle1" Class="mb-2">Sentiment по зірках</MudText>
+                        <div style="flex:1; min-height:0;">
+                            @if (_summary.SentimentByStars.Any(s => s.Positive + s.Negative + s.Neutral > 0))
+                            {
+                                <MudChart T="double" ChartType="ChartType.Bar"
+                                          ChartSeries="@SentimentByStarsSeries"
+                                          ChartLabels="@(new[]{ "1★", "2★", "3★", "4★", "5★" })"
+                                          LegendPalette="@(new[]{ "#4ade80", "#f87171", "#9ca3af" })"
+                                          Width="100%" Height="290px" />
+                            }
+                            else
+                            {
+                                <div class="d-flex align-center justify-center" style="height:290px;color:#9ca3af;">Немає даних</div>
+                            }
+                        </div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1 d-block text-center">
+                            Чи збігається кількість зірок з тональністю відгуку?
+                        </MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudPaper Elevation="2" Class="pa-3 d-flex flex-column" Style="height:380px;">
+                        <MudText Typo="Typo.subtitle1" Class="mb-2">Розподіл confidence score</MudText>
+                        <div style="flex:1; min-height:0;">
+                            <MudChart T="double" ChartType="ChartType.Bar"
+                                      ChartSeries="@(new List<ChartSeries<double>>
+                                      {
+                                          new() { Name = "Відгуки", Data = _summary.ConfidenceBuckets.Select(b=>(double)b.Count).ToArray() }
+                                      })"
+                                      ChartLabels="@(_summary.ConfidenceBuckets.Select(b=>b.Range).ToArray())"
+                                      LegendPalette="@(new[]{ "#53c2f6" })"
+                                      Width="100%" Height="290px" />
+                        </div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1 d-block text-center">
+                            Наскільки модель впевнена у своїх передбаченнях
+                        </MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudPaper Elevation="2" Class="pa-3 d-flex flex-column" Style="height:380px;">
+                        <MudText Typo="Typo.subtitle1" Class="mb-2">Healing actions</MudText>
+                        <div style="flex:1; min-height:0; display:flex; align-items:center;">
+                            @DrawHealingBarSvg()
+                        </div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1 d-block text-center">
+                            Які проблеми з текстами відгуків виявлено та виправлено
+                        </MudText>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+
+            @* ════ Група 2: Часова аналітика ════ *@
+            <div class="d-flex align-center gap-3 mb-3 mt-2">
+                <MudText Typo="Typo.h6">Часова аналітика</MudText>
+                <div style="flex:1;height:1px;background:rgba(255,255,255,0.12);"></div>
+            </div>
+            <MudGrid Spacing="3" Class="mb-5">
+                <MudItem xs="12" md="6">
+                    <MudPaper Elevation="2" Class="pa-3 d-flex flex-column" Style="height:380px;">
+                        <MudText Typo="Typo.subtitle1" Class="mb-3">Тренд відгуків по місяцях</MudText>
+                        <div style="flex:1; min-height:0;">
+                            @if (_monthlyTrend.Count > 0)
+                            {
+                                <MudChart T="double" ChartType="ChartType.Line"
+                                          ChartSeries="@MonthlySeries"
+                                          ChartLabels="@MonthlyLabels"
+                                          Width="100%" Height="290px" />
+                            }
+                            else
+                            {
+                                <div style="color:#9ca3af;text-align:center;padding:40px">Немає даних</div>
+                            }
+                        </div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1 d-block text-center">
+                            Динаміка активності відгуків по місяцях
+                        </MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudPaper Elevation="2" Class="pa-3 d-flex flex-column" Style="height:380px;">
+                        <MudText Typo="Typo.subtitle1" Class="mb-3">Середній рейтинг по місяцях</MudText>
+                        <div style="flex:1; min-height:0;">
+                            @if (_ratingTrend.Count > 0)
+                            {
+                                <MudChart T="double" ChartType="ChartType.Line"
+                                          ChartSeries="@RatingTrendSeries"
+                                          ChartLabels="@RatingTrendLabels"
+                                          Width="100%" Height="290px" />
+                            }
+                            else
+                            {
+                                <div style="color:#9ca3af;text-align:center;padding:40px">Немає даних</div>
+                            }
+                        </div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1 d-block text-center">
+                            Чи змінюється репутація бізнесу з часом?
+                        </MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12">
+                    <MudPaper Elevation="2" Class="pa-3">
+                        <MudText Typo="Typo.subtitle1" Class="mb-3">Heatmap активності</MudText>
+                        @DrawHeatmapSvg()
+                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1 d-block text-center">
+                            Коли користувачі найчастіше залишають відгуки (день тижня × година)
+                        </MudText>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+
+            @* ════ Група 3: Аналіз користувачів ════ *@
+            <div class="d-flex align-center gap-3 mb-3 mt-2">
+                <MudText Typo="Typo.h6">Аналіз користувачів</MudText>
+                <div style="flex:1;height:1px;background:rgba(255,255,255,0.12);"></div>
+            </div>
+            <MudGrid Spacing="3" Class="mb-5">
+                <MudItem xs="12" md="6">
+                    <MudPaper Elevation="2" Class="pa-3 d-flex flex-column" Style="height:380px;">
+                        <MudText Typo="Typo.subtitle1" Class="mb-3">Топ 10 найактивніших рецензентів</MudText>
+                        <div style="flex:1; min-height:0; overflow:hidden;">
+                            @DrawTopReviewersSvg()
+                        </div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1 d-block text-center">
+                            Найактивніші рецензенти цього бізнесу
+                        </MudText>
+                    </MudPaper>
+                </MudItem>
+                @* <MudItem xs="12" md="6">
+                    <MudPaper Elevation="2" Class="pa-3 d-flex flex-column" Style="height:380px;">
+                        <MudText Typo="Typo.subtitle1" Class="mb-3">Scatter: активність vs рейтинг</MudText>
+                        <div style="flex:1; min-height:0; overflow:hidden;">
+                            @DrawScatterSvg()
+                        </div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1 d-block text-center">
+                            Виявлення аномальних патернів: хейтери та фанати бізнесу
+                        </MudText>
+                    </MudPaper>
+                </MudItem> *@
+                <MudItem xs="12" md="6">
+                    <MudPaper Elevation="2" Class="pa-3 d-flex flex-column" Style="height:380px;">
+                        <MudText Typo="Typo.subtitle1" Class="mb-3">Корисність відгуків</MudText>
+                        <div style="flex:1; min-height:0;">
+                            @if (_usefulness != null)
+                            {
+                                <MudChart T="double" ChartType="ChartType.Bar"
+                                          ChartSeries="@(new List<ChartSeries<double>>
+                                          {
+                                              new() { Name = "Голоси", Data = new double[]{ (double)_usefulness.TotalUseful, (double)_usefulness.TotalFunny, (double)_usefulness.TotalCool } }
+                                          })"
+                                          ChartLabels="@(new[]{ "Useful", "Funny", "Cool" })"
+                                          Width="100%" Height="290px" />
+                            }
+                            else
+                            {
+                                <div style="color:#9ca3af;text-align:center;padding:40px">Немає даних</div>
+                            }
+                        </div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1 d-block text-center">
+                            Як інші користувачі оцінюють відгуки про цей бізнес
+                        </MudText>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+
+            @* ════ Група 4: Текстова аналітика ════ *@
+            <div class="d-flex align-center gap-3 mb-3 mt-2">
+                <MudText Typo="Typo.h6">Текстова аналітика</MudText>
+                <div style="flex:1;height:1px;background:rgba(255,255,255,0.12);"></div>
+            </div>
+            <MudGrid Spacing="3" Class="mb-5">
+                <MudItem xs="12" md="7">
+                    <MudPaper Elevation="2" Class="pa-3 d-flex flex-column" Style="height:380px;">
+                        <MudText Typo="Typo.subtitle1" Class="mb-3">Топ слова: позитивні vs негативні</MudText>
+                        <div style="flex:1; min-height:0; overflow:hidden;">
+                            @DrawTopWordsSvg()
+                        </div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1 d-block text-center">
+                            Які слова найчастіше зустрічаються в позитивних та негативних відгуках
+                        </MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" md="5">
+                    <MudPaper Elevation="2" Class="pa-3 d-flex flex-column" Style="height:380px;">
+                        <MudText Typo="Typo.subtitle1" Class="mb-3">Розподіл довжини відгуків</MudText>
+                        <div style="flex:1; min-height:0;">
+                            @if (_lengthDist.Count > 0)
+                            {
+                                <MudChart T="double" ChartType="ChartType.Bar"
+                                          ChartSeries="@(new List<ChartSeries<double>>
+                                          {
+                                              new() { Name = "Відгуки", Data = _lengthDist.Select(b => (double)b.Count).ToArray() }
+                                          })"
+                                          ChartLabels="@(_lengthDist.Select(b => b.Range).ToArray())"
+                                          Width="100%" Height="290px" />
+                            }
+                            else
+                            {
+                                <div style="color:#9ca3af;text-align:center;padding:40px">Немає даних</div>
+                            }
+                        </div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1 d-block text-center">
+                            Короткі нотатки vs розгорнуті огляди
+                        </MudText>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+        }
+    </MudTabPanel>
+
+</MudTabs>
+
+@code {
+    // ── навігація ────────────────────────────────────────────────────────────
+    private int  _activeTab = 0;
+    private bool Tab2Available =>
+        _exportResult != null && string.IsNullOrEmpty(_exportResult.Error);
+
+    private void GoToTab2() => _activeTab = 1;
+
+    private async Task GoToTab3()
+    {
+        _fromDagRun          = true;
+        _analyticsBusinessId = _selected!.BusinessId;
+        _analyticsLoaded     = false;
+        _activeTab           = 2;
+        StateHasChanged();
+        await LoadAnalyticsAsync();
+    }
+
+    // ── Tab 1: бізнеси ───────────────────────────────────────────────────────
+    private List<BusinessDto> _businesses        = [];
+    private bool              _loadingBusinesses = true;
+    private bool              _searching         = false;
+    private string?           _loadError;
+    private string            _searchText        = "";
+    private BusinessDto?      _selected;
+
+    // ── Tab 1: експорт ───────────────────────────────────────────────────────
+    private bool              _exporting      = false;
+    private string            _exportProgress = "";
+    private ExportResultDto?  _exportResult;
+    private CancellationTokenSource? _exportCts;
+
+    // ── Tab 2: DAG ───────────────────────────────────────────────────────────
+    private string  _ollamaModel   = "llama3.2";
+    private int     _batchSize     = 0;
+    private int     _offset        = 0;
+    private bool    _dagTriggering = false;
+    private bool    _dagRunning    = false;
+    private bool    _dagDone       = false;
+    private bool    _dagFailed     = false;
+    private bool    _userCancelled = false;
+    private string  _dagState      = "";
+    private string? _dagRunId;
+    private DateTime _dagStartTime;
+
+    private int     _progCurrent = 0;
+    private int     _progTotal   = 0;
+
+    private List<TaskInstanceDto> _taskInstances = [];
+    private List<string>          _logLines      = [];
+    private OutputFileDto?        _outputFile;
+    private string?               _dagDuration;
+
+    private CancellationTokenSource? _pollCts;
+    private ElementReference         _logBox;
+
+    // ── Lifecycle ────────────────────────────────────────────────────────────
+
+    protected override async Task OnInitializedAsync() =>
+        await LoadBusinesses(search: null, initial: true);
+
+    public async ValueTask DisposeAsync()
+    {
+        _pollCts?.Cancel();
+        _pollCts?.Dispose();
+        await Task.CompletedTask;
+    }
+
+    // ── Tab 1: завантаження / пошук ──────────────────────────────────────────
+
+    private async Task LoadBusinesses(string? search, bool initial = false)
+    {
+        if (initial) _loadingBusinesses = true;
+        else         _searching         = true;
+        try
+        {
+            var url = string.IsNullOrWhiteSpace(search)
+                ? "api/business-analysis/businesses?limit=100"
+                : $"api/business-analysis/businesses?search={Uri.EscapeDataString(search)}&limit=100";
+            _businesses = await Http.GetFromJsonAsync<List<BusinessDto>>(url) ?? [];
+            _loadError  = null;
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            _loadError = "DuckDB файл не знайдено. Спочатку виконайте імпорт на вкладці «Імпорт Yelp DB».";
+        }
+        catch (Exception ex) { _loadError = $"Помилка завантаження: {ex.Message}"; }
+        finally { _loadingBusinesses = false; _searching = false; }
+    }
+
+    private async void SearchBusinesses() => await LoadBusinesses(_searchText);
+
+    private void SelectBusiness(BusinessDto biz)
+    {
+        if (_selected?.BusinessId == biz.BusinessId) return;
+        _selected = biz;
+        _exportResult = null;
+        _exporting    = false;
+        _exportCts?.Cancel();
+        ResetDag();
+        ResetAnalytics();
+    }
+
+    private string GetItemStyle(BusinessDto biz) =>
+        _selected?.BusinessId == biz.BusinessId
+            ? "background:rgba(83,194,246,0.15); border-left:3px solid var(--mud-palette-primary);"
+            : "background:transparent; border-left:3px solid transparent;";
+
+    // ── Tab 1: експорт ───────────────────────────────────────────────────────
+
+    private async Task ExportReviews()
+    {
+        if (_selected == null) return;
+        _exporting      = true;
+        _exportResult   = null;
+        _exportProgress = $"Зчитую відгуки для «{_selected.Name}»...";
+        _exportCts      = new CancellationTokenSource();
+        StateHasChanged();
+        try
+        {
+            var resp = await Http.PostAsync(
+                $"api/business-analysis/export/{Uri.EscapeDataString(_selected.BusinessId)}",
+                null, _exportCts.Token);
+            _exportProgress = "Записую NDJSON файл...";
+            StateHasChanged();
+            _exportResult = resp.IsSuccessStatusCode
+                ? await resp.Content.ReadFromJsonAsync<ExportResultDto>()
+                : new ExportResultDto { Error = await resp.Content.ReadAsStringAsync() };
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { _exportResult = new ExportResultDto { Error = ex.Message }; }
+        finally { _exporting = false; StateHasChanged(); }
+    }
+
+    private void CancelExport() { _exportCts?.Cancel(); _exporting = false; }
+
+    private void ResetExport()
+    {
+        _exportResult = null;
+        _exporting    = false;
+        ResetDag();
+    }
+
+    private async Task CopyPath()
+    {
+        if (_exportResult?.FilePath is { } p)
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", p);
+    }
+
+    // ── Tab 2: тригер DAG ────────────────────────────────────────────────────
+
+    private async Task TriggerDag()
+    {
+        if (_exportResult?.FilePath == null) return;
+
+        _dagTriggering = true;
+        _dagRunning    = false;
+        _dagDone       = false;
+        _dagFailed     = false;
+        _userCancelled = false;
+        _dagRunId      = null;
+        _dagState      = "";
+        _progCurrent   = 0;
+        _progTotal     = _exportResult.ReviewCount;
+        _taskInstances = [];
+        _logLines      = [];
+        _outputFile    = null;
+        _dagDuration   = null;
+        StateHasChanged();
+
+        try
+        {
+            var resp = await Http.PostAsJsonAsync("api/airflow/trigger-dag", new
+            {
+                filePath    = _exportResult.FilePath,
+                ollamaModel = _ollamaModel,
+                lineCount   = _exportResult.ReviewCount,
+                batchSize   = _batchSize,
+                offset      = _offset
+            });
+
+            var result = await resp.Content.ReadFromJsonAsync<TriggerDagResultDto>();
+
+            if (!resp.IsSuccessStatusCode || !string.IsNullOrEmpty(result?.Error))
+            {
+                _dagFailed = true;
+                _logLines  = [$"Помилка запуску: {result?.Error ?? await resp.Content.ReadAsStringAsync()}"];
+                return;
+            }
+
+            _dagRunId    = result!.RunId;
+            _dagStartTime = DateTime.TryParse(result.StartTime, out var dt) ? dt : DateTime.UtcNow;
+            _dagRunning  = true;
+            _dagState    = "queued";
+        }
+        catch (Exception ex)
+        {
+            _dagFailed = true;
+            _logLines  = [$"Виключення: {ex.Message}"];
+        }
+        finally
+        {
+            _dagTriggering = false;
+            StateHasChanged();
+        }
+
+        if (_dagRunning)
+            _ = StartPollingAsync();
+    }
+
+    private async Task StartPollingAsync()
+    {
+        _pollCts?.Cancel();
+        _pollCts = new CancellationTokenSource();
+        var timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(_pollCts.Token))
+            {
+                await PollOnceAsync(_pollCts.Token);
+                await InvokeAsync(StateHasChanged);
+
+                if (_dagDone || _dagFailed || _userCancelled) break;
+            }
+        }
+        catch (OperationCanceledException) { }
+        finally { timer.Dispose(); }
+    }
+
+    private async Task PollOnceAsync(CancellationToken ct)
+    {
+        if (_dagRunId == null) return;
+        try
+        {
+            // ── статус DAG ──
+            var runResp = await Http.GetFromJsonAsync<DagRunDto>(
+                $"api/airflow/dag-run/{Uri.EscapeDataString(_dagRunId)}", ct);
+
+            if (runResp != null)
+            {
+                _dagState = runResp.State;
+
+                if (runResp.State == "success")
+                {
+                    _dagRunning = false;
+                    _dagDone    = true;
+                    if (DateTime.TryParse(runResp.StartDate, out var s) &&
+                        DateTime.TryParse(runResp.EndDate,   out var e))
+                        _dagDuration = (e - s).ToString(@"hh\:mm\:ss");
+
+                    _outputFile = await Http.GetFromJsonAsync<OutputFileDto>(
+                        $"api/airflow/output-file/{Uri.EscapeDataString(_selected!.BusinessId)}", ct);
+                }
+                else if (runResp.State == "failed")
+                {
+                    _dagRunning = false;
+                    _dagFailed  = true;
+                }
+            }
+
+            // ── таски ──
+            var tasks = await Http.GetFromJsonAsync<List<TaskInstanceDto>>(
+                $"api/airflow/task-instances/{Uri.EscapeDataString(_dagRunId)}", ct);
+            if (tasks != null) _taskInstances = tasks;
+
+            // ── логи analyze_sentiment ──
+            var logs = await Http.GetFromJsonAsync<TaskLogsDto>(
+                $"api/airflow/task-logs/{Uri.EscapeDataString(_dagRunId)}/analyze_sentiment", ct);
+            if (logs != null && !string.IsNullOrEmpty(logs.Error) == false)
+            {
+                if (logs.Total > 0)
+                {
+                    _progCurrent = logs.Current;
+                    _progTotal   = logs.Total;
+                }
+                if (logs.LastLines.Count > 0) _logLines = logs.LastLines;
+            }
+        }
+        catch (OperationCanceledException) { throw; }
+        catch { /* ігноруємо тимчасові помилки мережі */ }
+    }
+
+    private async Task CancelDag()
+    {
+        if (_dagRunId == null) return;
+        _pollCts?.Cancel();
+        try
+        {
+            await Http.PostAsync($"api/airflow/cancel/{Uri.EscapeDataString(_dagRunId)}", null);
+        }
+        catch { }
+        _dagRunning    = false;
+        _userCancelled = true;
+        _dagState      = "failed";
+        StateHasChanged();
+    }
+
+    private void ResetDag()
+    {
+        _pollCts?.Cancel();
+        _dagTriggering = false;
+        _dagRunning    = false;
+        _dagDone       = false;
+        _dagFailed     = false;
+        _userCancelled = false;
+        _dagState      = "";
+        _dagRunId      = null;
+        _progCurrent   = 0;
+        _progTotal     = 0;
+        _taskInstances = [];
+        _logLines      = [];
+        _outputFile    = null;
+        _dagDuration   = null;
+        _batchSize     = 0;
+        _offset        = 0;
+        ResetAnalytics();
+    }
+
+    private async Task CopyOutputPath()
+    {
+        if (_outputFile?.FilePath is { } p)
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", p);
+    }
+
+    // ── Tab 3: стан ─────────────────────────────────────────────────────────
+    private bool                   _analyticsLoading       = false;
+    private bool                   _analyticsLoaded        = false;
+    private string?                _analyticsError;
+    private SentimentSummaryDto?   _summary;
+    private List<MonthlyCountDto>  _monthlyTrend           = [];
+    private List<HeatmapCellDto>   _heatmapData            = [];
+    private List<MonthlyRatingDto> _ratingTrend            = [];
+    private List<TopReviewerDto>   _topReviewers           = [];
+    private List<ScatterPointDto>  _userScatter            = [];
+    private UsefulnessDto?         _usefulness;
+    private List<LengthBucketDto>  _lengthDist             = [];
+
+    private bool                   _fromDagRun             = false;
+    private string                 _analyticsBusinessId    = "";
+    private List<ResultFileDto>    _availableResultFiles   = [];
+    private ResultFileDto?         _selectedResultFileDto;
+
+    private List<ChartSeries<double>> SentimentByStarsSeries =>
+        _summary == null ? [] : new List<ChartSeries<double>>
+        {
+            new() { Name = "Позитивні", Data = _summary.SentimentByStars.Select(s => (double)s.Positive).ToArray() },
+            new() { Name = "Негативні", Data = _summary.SentimentByStars.Select(s => (double)s.Negative).ToArray() },
+            new() { Name = "Нейтральні", Data = _summary.SentimentByStars.Select(s => (double)s.Neutral).ToArray() },
+        };
+
+    private List<ChartSeries<double>> MonthlySeries =>
+        _monthlyTrend.Count == 0 ? [] :
+        [new ChartSeries<double> { Name = "Відгуки", Data = _monthlyTrend.Select(m => (double)m.Count).ToArray() }];
+
+    private string[] MonthlyLabels =>
+        _monthlyTrend.Select((m, i) =>
+            i % 12 == 0 ? (m.Month.Length >= 4 ? m.Month[..4] : m.Month) : "").ToArray();
+
+    private List<ChartSeries<double>> RatingTrendSeries =>
+        _ratingTrend.Count == 0 ? [] :
+        [new ChartSeries<double> { Name = "Середній рейтинг ★", Data = _ratingTrend.Select(r => r.AvgStars).ToArray() }];
+
+    private string[] RatingTrendLabels =>
+        _ratingTrend.Select((r, i) =>
+            i % 12 == 0 ? (r.Month.Length >= 4 ? r.Month[..4] : r.Month) : "").ToArray();
+
+    // ── Tab 3: завантаження ──────────────────────────────────────────────────
+
+    private async Task OnTabChanged(int index)
+    {
+        _activeTab = index;
+        if (index != 2) return;
+
+        if (_fromDagRun)
+        {
+            if (!_analyticsLoaded && !_analyticsLoading)
+                await LoadAnalyticsAsync();
+        }
+        else
+        {
+            if (_availableResultFiles.Count == 0)
+                await LoadAvailableFilesAsync();
+        }
+    }
+
+    private async Task LoadAvailableFilesAsync()
+    {
+        try
+        {
+            _availableResultFiles = await Http.GetFromJsonAsync<List<ResultFileDto>>(
+                "api/analytics/result-files") ?? [];
+
+            if (_availableResultFiles.Count > 0 && _selectedResultFileDto == null)
+            {
+                _selectedResultFileDto = _availableResultFiles[0];
+                _analyticsBusinessId   = _selectedResultFileDto.BusinessId;
+                await LoadAnalyticsAsync();
+            }
+            else
+            {
+                StateHasChanged();
+            }
+        }
+        catch { StateHasChanged(); }
+    }
+
+    private async Task OnResultFileSelected(ResultFileDto? file)
+    {
+        if (file == null || file.BusinessId == _analyticsBusinessId) return;
+        _selectedResultFileDto = file;
+        _analyticsBusinessId   = file.BusinessId;
+        _analyticsLoaded       = false;
+        await LoadAnalyticsAsync();
+    }
+
+    private async Task LoadAnalyticsAsync()
+    {
+        if (string.IsNullOrEmpty(_analyticsBusinessId)) return;
+        _analyticsLoading = true;
+        _analyticsError   = null;
+        StateHasChanged();
+        try
+        {
+            var bid = Uri.EscapeDataString(_analyticsBusinessId);
+            var t1 = Http.GetFromJsonAsync<SentimentSummaryDto>($"api/analytics/summary/{bid}");
+            var t2 = Http.GetFromJsonAsync<List<MonthlyCountDto>>($"api/analytics/monthly-trend/{bid}");
+            var t3 = Http.GetFromJsonAsync<List<HeatmapCellDto>>($"api/analytics/heatmap/{bid}");
+            var t4 = Http.GetFromJsonAsync<List<MonthlyRatingDto>>($"api/analytics/rating-trend/{bid}");
+            var t5 = Http.GetFromJsonAsync<List<TopReviewerDto>>($"api/analytics/top-reviewers/{bid}");
+            var t6 = Http.GetFromJsonAsync<List<ScatterPointDto>>($"api/analytics/user-scatter/{bid}");
+            var t7 = Http.GetFromJsonAsync<UsefulnessDto>($"api/analytics/usefulness/{bid}");
+            var t8 = Http.GetFromJsonAsync<List<LengthBucketDto>>($"api/analytics/length-distribution/{bid}");
+
+            await Task.WhenAll(t1, t2, t3, t4, t5, t6, t7, t8);
+
+            _summary         = t1.Result;
+            _monthlyTrend    = t2.Result ?? [];
+            _heatmapData     = t3.Result ?? [];
+            _ratingTrend     = t4.Result ?? [];
+            _topReviewers    = t5.Result ?? [];
+            _userScatter     = t6.Result ?? [];
+            _usefulness      = t7.Result;
+            _lengthDist      = t8.Result ?? [];
+            _analyticsLoaded = true;
+        }
+        catch (Exception ex) { _analyticsError = ex.Message; }
+        finally { _analyticsLoading = false; StateHasChanged(); }
+    }
+
+    private void ResetAnalytics()
+    {
+        _analyticsLoaded      = false;
+        _analyticsLoading     = false;
+        _analyticsError       = null;
+        _summary              = null;
+        _monthlyTrend         = [];
+        _heatmapData          = [];
+        _ratingTrend          = [];
+        _topReviewers         = [];
+        _userScatter          = [];
+        _usefulness           = null;
+        _lengthDist           = [];
+        _fromDagRun           = false;
+        _analyticsBusinessId  = "";
+        _availableResultFiles = [];
+        _selectedResultFileDto = null;
+    }
+
+    // ── SVG: Grouped bar (sentiment по зірках) ───────────────────────────────
+
+    private MarkupString DrawGroupedBarSvg()
+    {
+        var data = _summary?.SentimentByStars;
+        if (data == null || data.Count == 0 || data.All(d => d.Positive + d.Negative + d.Neutral == 0))
+            return (MarkupString)"<div style='color:#9ca3af;text-align:center;padding:40px'>Немає даних</div>";
+
+        const int W = 520, H = 300, ml = 50, mr = 20, mt = 30, mb = 60;
+        int cw = W - ml - mr, ch = H - mt - mb;
+        int maxVal = data.Max(d => Math.Max(d.Positive, Math.Max(d.Negative, d.Neutral)));
+        if (maxVal == 0) maxVal = 1;
+
+        const int groupW = 90, barW = 22, gap = 4;
+        int leftPad = (groupW - (3 * barW + 2 * gap)) / 2;
+        string[] colors = { "#4ade80", "#f87171", "#9ca3af" };
+
+        var sb = new System.Text.StringBuilder();
+        sb.Append($"<svg viewBox=\"0 0 {W} {H}\" style=\"width:100%\" xmlns=\"http://www.w3.org/2000/svg\">");
+
+        for (int i = 0; i <= 5; i++)
+        {
+            int yy = mt + ch - i * ch / 5;
+            sb.Append($"<line x1=\"{ml}\" y1=\"{yy}\" x2=\"{W - mr}\" y2=\"{yy}\" stroke=\"rgba(255,255,255,0.08)\" stroke-width=\"1\"/>");
+            sb.Append($"<text x=\"{ml - 5}\" y=\"{yy + 4}\" text-anchor=\"end\" fill=\"#9ca3af\" font-size=\"10\">{maxVal * i / 5}</text>");
+        }
+
+        for (int g = 0; g < data.Count; g++)
+        {
+            var d = data[g];
+            int gl = ml + g * groupW;
+            int[] vals = { d.Positive, d.Negative, d.Neutral };
+            for (int b = 0; b < 3; b++)
+            {
+                int bx = gl + leftPad + b * (barW + gap);
+                double bh = (double)vals[b] * ch / maxVal;
+                double by2 = mt + ch - bh;
+                if (bh > 0)
+                    sb.Append($"<rect x=\"{bx}\" y=\"{by2:F1}\" width=\"{barW}\" height=\"{bh:F1}\" fill=\"{colors[b]}\" rx=\"3\"/>");
+            }
+            sb.Append($"<text x=\"{gl + groupW / 2}\" y=\"{H - mb + 18}\" text-anchor=\"middle\" fill=\"#e5e7eb\" font-size=\"12\">{d.Stars}★</text>");
+        }
+
+        string[] lbls = { "Позитивні", "Негативні", "Нейтральні" };
+        for (int i = 0; i < 3; i++)
+        {
+            int lx = ml + i * 155;
+            sb.Append($"<rect x=\"{lx}\" y=\"{H - 18}\" width=\"12\" height=\"12\" fill=\"{colors[i]}\" rx=\"2\"/>");
+            sb.Append($"<text x=\"{lx + 16}\" y=\"{H - 8}\" fill=\"#e5e7eb\" font-size=\"10\">{lbls[i]}</text>");
+        }
+
+        sb.Append("</svg>");
+        return (MarkupString)sb.ToString();
+    }
+
+    // ── SVG: Horizontal bar (healing actions) ────────────────────────────────
+
+    private MarkupString DrawHealingBarSvg()
+    {
+        var stats = _summary?.HealingStats;
+        if (stats == null || stats.Count == 0)
+            return (MarkupString)"<div style='color:#9ca3af;text-align:center;padding:40px'>Немає healing actions</div>";
+
+        var items = stats.OrderByDescending(kv => kv.Value).ToList();
+        const int W = 480, ml = 160, mr = 55, mt = 10, barH = 26, gap = 8;
+        int barW = W - ml - mr;
+        int H = mt + items.Count * (barH + gap) + 20;
+        int maxVal = items.Max(kv => kv.Value); if (maxVal == 0) maxVal = 1;
+
+        var sb = new System.Text.StringBuilder();
+        sb.Append($"<svg viewBox=\"0 0 {W} {H}\" style=\"width:100%\" xmlns=\"http://www.w3.org/2000/svg\">");
+
+        for (int i = 0; i < items.Count; i++)
+        {
+            int y = mt + i * (barH + gap);
+            double w = (double)items[i].Value * barW / maxVal;
+            sb.Append($"<text x=\"{ml - 8}\" y=\"{y + barH / 2 + 4}\" text-anchor=\"end\" fill=\"#e5e7eb\" font-size=\"11\">{items[i].Key}</text>");
+            sb.Append($"<rect x=\"{ml}\" y=\"{y}\" width=\"{barW}\" height=\"{barH}\" fill=\"rgba(255,255,255,0.04)\" rx=\"4\"/>");
+            if (w > 0) sb.Append($"<rect x=\"{ml}\" y=\"{y}\" width=\"{w:F1}\" height=\"{barH}\" fill=\"#fbbf24\" rx=\"4\"/>");
+            sb.Append($"<text x=\"{ml + w + 6:F1}\" y=\"{y + barH / 2 + 4}\" fill=\"#9ca3af\" font-size=\"10\">{items[i].Value}</text>");
+        }
+
+        sb.Append("</svg>");
+        return (MarkupString)sb.ToString();
+    }
+
+    // ── SVG: Heatmap 7×24 ───────────────────────────────────────────────────
+
+    private MarkupString DrawHeatmapSvg()
+    {
+        if (_heatmapData.Count == 0)
+            return (MarkupString)"<div style='color:#9ca3af;text-align:center;padding:40px'>Немає даних</div>";
+
+        const int ROWS = 7, COLS = 24, CELL = 24, GAP = 2, LEFT = 34, TOP = 30;
+        int W = LEFT + COLS * (CELL + GAP) + 10;
+        int H = TOP + ROWS * (CELL + GAP) + 30;
+
+        int[,] grid = new int[ROWS, COLS];
+        foreach (var c in _heatmapData)
+        {
+            int row = c.DayOfWeek == 0 ? 6 : c.DayOfWeek - 1;
+            if (row >= 0 && row < ROWS && c.Hour >= 0 && c.Hour < COLS)
+                grid[row, c.Hour] = c.Count;
+        }
+
+        int maxCount = 0;
+        for (int r = 0; r < ROWS; r++)
+            for (int c = 0; c < COLS; c++)
+                if (grid[r, c] > maxCount) maxCount = grid[r, c];
+        if (maxCount == 0) maxCount = 1;
+
+        string[] days = { "Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Нд" };
+        var sb = new System.Text.StringBuilder();
+        sb.Append($"<svg viewBox=\"0 0 {W} {H}\" style=\"width:100%\" xmlns=\"http://www.w3.org/2000/svg\">");
+
+        for (int h = 0; h < COLS; h += 4)
+        {
+            double x = LEFT + h * (CELL + GAP) + CELL / 2.0;
+            sb.Append($"<text x=\"{x:F0}\" y=\"{TOP - 8}\" text-anchor=\"middle\" fill=\"#9ca3af\" font-size=\"10\">{h:00}</text>");
+        }
+
+        for (int r = 0; r < ROWS; r++)
+        {
+            double ly = TOP + r * (CELL + GAP) + CELL / 2.0 + 4;
+            sb.Append($"<text x=\"{LEFT - 6}\" y=\"{ly:F0}\" text-anchor=\"end\" fill=\"#9ca3af\" font-size=\"11\">{days[r]}</text>");
+            for (int c = 0; c < COLS; c++)
+            {
+                double cx = LEFT + c * (CELL + GAP);
+                double cy = TOP + r * (CELL + GAP);
+                int count = grid[r, c];
+                double t = (double)count / maxCount;
+                string fill = count == 0 ? "#1f2937"
+                    : $"rgb({(int)(17 + t * 57)},{(int)(24 + t * 198)},{(int)(39 + t * 89)})";
+                if (count > 0)
+                    sb.Append($"<rect x=\"{cx:F0}\" y=\"{cy:F0}\" width=\"{CELL}\" height=\"{CELL}\" fill=\"{fill}\" rx=\"3\"><title>{days[r]} {c:00}:00 — {count}</title></rect>");
+                else
+                    sb.Append($"<rect x=\"{cx:F0}\" y=\"{cy:F0}\" width=\"{CELL}\" height=\"{CELL}\" fill=\"{fill}\" rx=\"3\"/>");
+            }
+        }
+
+        int scX = LEFT, scY = H - 18;
+        sb.Append($"<text x=\"{scX}\" y=\"{scY + 10}\" fill=\"#9ca3af\" font-size=\"9\">менше</text>");
+        for (int i = 0; i <= 8; i++)
+        {
+            double t2 = i / 8.0;
+            string lc = i == 0 ? "#1f2937" : $"rgb({(int)(17 + t2 * 57)},{(int)(24 + t2 * 198)},{(int)(39 + t2 * 89)})";
+            sb.Append($"<rect x=\"{scX + 50 + i * 14}\" y=\"{scY + 1}\" width=\"13\" height=\"12\" fill=\"{lc}\" rx=\"2\"/>");
+        }
+        sb.Append($"<text x=\"{scX + 50 + 9 * 14}\" y=\"{scY + 10}\" fill=\"#9ca3af\" font-size=\"9\">більше</text>");
+
+        sb.Append("</svg>");
+        return (MarkupString)sb.ToString();
+    }
+
+    // ── SVG: Rating trend line (with reference) ──────────────────────────────
+
+    private MarkupString DrawRatingTrendSvg()
+    {
+        if (_ratingTrend.Count == 0)
+            return (MarkupString)"<div style='color:#9ca3af;text-align:center;padding:40px'>Немає даних</div>";
+
+        const int W = 600, H = 290, ml = 50, mr = 50, mt = 20, mb = 50;
+        int cw = W - ml - mr, ch = H - mt - mb;
+        const double yMin = 1.0, yMax = 5.0;
+        int n = _ratingTrend.Count;
+        double avg = _ratingTrend.Average(r => r.AvgStars);
+
+        double XFor(int i) => ml + (double)i / Math.Max(n - 1, 1) * cw;
+        double YFor(double v) => mt + ch - (v - yMin) / (yMax - yMin) * ch;
+
+        var sb = new System.Text.StringBuilder();
+        sb.Append($"<svg viewBox=\"0 0 {W} {H}\" style=\"width:100%\" xmlns=\"http://www.w3.org/2000/svg\">");
+
+        for (int v = 1; v <= 5; v++)
+        {
+            double yy = YFor(v);
+            sb.Append($"<line x1=\"{ml}\" y1=\"{yy:F1}\" x2=\"{W - mr}\" y2=\"{yy:F1}\" stroke=\"rgba(255,255,255,0.08)\" stroke-width=\"1\"/>");
+            sb.Append($"<text x=\"{ml - 5}\" y=\"{yy + 4:F1}\" text-anchor=\"end\" fill=\"#9ca3af\" font-size=\"10\">{v}.0</text>");
+        }
+
+        double refY = YFor(avg);
+        sb.Append($"<line x1=\"{ml}\" y1=\"{refY:F1}\" x2=\"{W - mr}\" y2=\"{refY:F1}\" stroke=\"#fbbf24\" stroke-width=\"1.5\" stroke-dasharray=\"6,3\"/>");
+        sb.Append($"<text x=\"{W - mr + 3}\" y=\"{refY + 4:F1}\" fill=\"#fbbf24\" font-size=\"10\">⌀{avg:F2}</text>");
+
+        var pathParts = new System.Text.StringBuilder();
+        pathParts.Append($"M {XFor(0):F1},{YFor(_ratingTrend[0].AvgStars):F1}");
+        for (int i = 1; i < n; i++)
+            pathParts.Append($" L {XFor(i):F1},{YFor(_ratingTrend[i].AvgStars):F1}");
+        string lineD = pathParts.ToString();
+
+        sb.Append($"<path d=\"{lineD} L {XFor(n - 1):F1},{mt + ch} L {ml},{mt + ch} Z\" fill=\"rgba(83,194,246,0.1)\"/>");
+        sb.Append($"<path d=\"{lineD}\" fill=\"none\" stroke=\"#53c2f6\" stroke-width=\"2\"/>");
+
+        for (int i = 0; i < n; i++)
+        {
+            double px = XFor(i), py = YFor(_ratingTrend[i].AvgStars);
+            sb.Append($"<circle cx=\"{px:F1}\" cy=\"{py:F1}\" r=\"3\" fill=\"#53c2f6\"/>");
+            if (i % 12 == 0)
+            {
+                string lbl = _ratingTrend[i].Month.Length >= 4 ? _ratingTrend[i].Month[..4] : _ratingTrend[i].Month;
+                sb.Append($"<text x=\"{px:F1}\" y=\"{H - mb + 18}\" text-anchor=\"middle\" fill=\"#9ca3af\" font-size=\"10\">{lbl}</text>");
+            }
+        }
+
+        sb.Append("</svg>");
+        return (MarkupString)sb.ToString();
+    }
+
+    // ── SVG: Top reviewers horizontal bar ────────────────────────────────────
+
+    private MarkupString DrawTopReviewersSvg()
+    {
+        if (_topReviewers.Count == 0)
+            return (MarkupString)"<div style='color:#9ca3af;text-align:center;padding:40px'>Немає даних</div>";
+
+        const int W = 480, ml = 120, mr = 90, mt = 10, barH = 28, gap = 6;
+        int barW = W - ml - mr;
+        int H = mt + _topReviewers.Count * (barH + gap) + 20;
+        int maxVal = _topReviewers.Max(r => r.ReviewCount); if (maxVal == 0) maxVal = 1;
+
+        var sb = new System.Text.StringBuilder();
+        sb.Append($"<svg viewBox=\"0 0 {W} {H}\" style=\"width:100%\" xmlns=\"http://www.w3.org/2000/svg\">");
+
+        for (int i = 0; i < _topReviewers.Count; i++)
+        {
+            var rev = _topReviewers[i];
+            int y = mt + i * (barH + gap);
+            double w = (double)rev.ReviewCount * barW / maxVal;
+            string name = rev.Name.Length > 14 ? rev.Name[..14] + "…" : rev.Name;
+            sb.Append($"<text x=\"{ml - 8}\" y=\"{y + barH / 2 + 4}\" text-anchor=\"end\" fill=\"#e5e7eb\" font-size=\"11\">{name}</text>");
+            sb.Append($"<rect x=\"{ml}\" y=\"{y}\" width=\"{barW}\" height=\"{barH}\" fill=\"rgba(255,255,255,0.04)\" rx=\"4\"/>");
+            if (w > 0) sb.Append($"<rect x=\"{ml}\" y=\"{y}\" width=\"{w:F1}\" height=\"{barH}\" fill=\"#53c2f6\" rx=\"4\"/>");
+            sb.Append($"<text x=\"{ml + w + 6:F1}\" y=\"{y + barH / 2 + 4}\" fill=\"#9ca3af\" font-size=\"10\">{rev.ReviewCount} · ⭐{rev.AvgStars:F1}</text>");
+        }
+
+        sb.Append("</svg>");
+        return (MarkupString)sb.ToString();
+    }
+
+    // ── SVG: Scatter plot (user activity vs rating) ──────────────────────────
+
+    private MarkupString DrawScatterSvg()
+    {
+        if (_userScatter.Count == 0)
+            return (MarkupString)"<div style='color:#9ca3af;text-align:center;padding:40px'>Немає даних</div>";
+
+        const int W = 500, H = 310, ml = 52, mr = 24, mt = 30, mb = 52;
+        int cw = W - ml - mr, ch = H - mt - mb;
+        int maxX = Math.Max(_userScatter.Max(p => p.TotalReviews), 1);
+        const double yMin = 1.0, yMax = 5.0;
+
+        double XFor(double v) => ml + v / maxX * cw;
+        double YFor(double v) => mt + ch - (Math.Clamp(v, yMin, yMax) - yMin) / (yMax - yMin) * ch;
+
+        var sb = new System.Text.StringBuilder();
+        sb.Append($"<svg viewBox=\"0 0 {W} {H}\" style=\"width:100%\" xmlns=\"http://www.w3.org/2000/svg\">");
+
+        // Y axis: grid lines + star labels
+        for (int v = 1; v <= 5; v++)
+        {
+            double yy = YFor(v);
+            sb.Append($"<line x1=\"{ml}\" y1=\"{yy:F1}\" x2=\"{W - mr}\" y2=\"{yy:F1}\" stroke=\"rgba(255,255,255,0.08)\" stroke-width=\"1\"/>");
+            sb.Append($"<text x=\"{ml - 6}\" y=\"{yy + 4:F1}\" text-anchor=\"end\" fill=\"#9ca3af\" font-size=\"10\">{v}★</text>");
+        }
+
+        // X axis: tick marks + numeric labels (5 steps)
+        int xTicks = Math.Min(5, maxX);
+        for (int i = 0; i <= xTicks; i++)
+        {
+            double xVal = (double)i / xTicks * maxX;
+            double xx = XFor(xVal);
+            sb.Append($"<line x1=\"{xx:F1}\" y1=\"{mt + ch}\" x2=\"{xx:F1}\" y2=\"{mt + ch + 5}\" stroke=\"#6b7280\" stroke-width=\"1\"/>");
+            sb.Append($"<text x=\"{xx:F1}\" y=\"{mt + ch + 17}\" text-anchor=\"middle\" fill=\"#9ca3af\" font-size=\"9\">{(int)Math.Round(xVal)}</text>");
+        }
+
+        // Axis titles
+        sb.Append($"<text x=\"{ml + cw / 2}\" y=\"{H - 6}\" text-anchor=\"middle\" fill=\"#9ca3af\" font-size=\"10\">Кількість відгуків від цього користувача</text>");
+        sb.Append($"<text x=\"12\" y=\"{mt + ch / 2}\" text-anchor=\"middle\" fill=\"#9ca3af\" font-size=\"10\" transform=\"rotate(-90,12,{mt + ch / 2})\">Середній рейтинг</text>");
+
+        // Data points
+        foreach (var p in _userScatter)
+        {
+            double px = XFor(p.TotalReviews), py = YFor(p.AvgRating);
+            string color = p.AvgRating > 3.5 ? "#4ade80" : p.AvgRating < 2.5 ? "#f87171" : "#9ca3af";
+            sb.Append($"<circle cx=\"{px:F1}\" cy=\"{py:F1}\" r=\"3\" fill=\"{color}\" opacity=\"0.65\"/>");
+        }
+
+        // Legend (top-left inside chart area)
+        sb.Append($"<circle cx=\"{ml + 5}\" cy=\"{mt + 8}\" r=\"4\" fill=\"#4ade80\" opacity=\"0.8\"/>");
+        sb.Append($"<text x=\"{ml + 13}\" y=\"{mt + 12}\" fill=\"#e5e7eb\" font-size=\"9\">рейтинг &gt; 3.5</text>");
+        sb.Append($"<circle cx=\"{ml + 98}\" cy=\"{mt + 8}\" r=\"4\" fill=\"#9ca3af\" opacity=\"0.8\"/>");
+        sb.Append($"<text x=\"{ml + 106}\" y=\"{mt + 12}\" fill=\"#e5e7eb\" font-size=\"9\">нейтральний</text>");
+        sb.Append($"<circle cx=\"{ml + 185}\" cy=\"{mt + 8}\" r=\"4\" fill=\"#f87171\" opacity=\"0.8\"/>");
+        sb.Append($"<text x=\"{ml + 193}\" y=\"{mt + 12}\" fill=\"#e5e7eb\" font-size=\"9\">рейтинг &lt; 2.5</text>");
+
+        sb.Append("</svg>");
+        return (MarkupString)sb.ToString();
+    }
+
+    // ── SVG: Two-column top words ────────────────────────────────────────────
+
+    private MarkupString DrawTopWordsSvg()
+    {
+        var posW = _summary?.TopPositiveWords ?? [];
+        var negW = _summary?.TopNegativeWords ?? [];
+        if (posW.Count == 0 && negW.Count == 0)
+            return (MarkupString)"<div style='color:#9ca3af;text-align:center;padding:40px'>Немає даних</div>";
+
+        int rows = Math.Max(posW.Count, negW.Count);
+        const int barH = 22, gap = 5, labelW = 80, barAreaW = 195;
+        const int panelW = labelW + barAreaW + 15, panelGap = 20, mt = 28;
+        int W = panelW * 2 + panelGap, H = mt + rows * (barH + gap) + 20;
+        int maxPos = posW.Count > 0 ? posW.Max(w => w.Count) : 1;
+        int maxNeg = negW.Count > 0 ? negW.Max(w => w.Count) : 1;
+
+        var sb = new System.Text.StringBuilder();
+        sb.Append($"<svg viewBox=\"0 0 {W} {H}\" style=\"width:100%\" xmlns=\"http://www.w3.org/2000/svg\">");
+        sb.Append($"<text x=\"{panelW / 2}\" y=\"16\" text-anchor=\"middle\" fill=\"#4ade80\" font-size=\"12\" font-weight=\"bold\">💚 Позитивні</text>");
+        sb.Append($"<text x=\"{panelW + panelGap + panelW / 2}\" y=\"16\" text-anchor=\"middle\" fill=\"#f87171\" font-size=\"12\" font-weight=\"bold\">🔴 Негативні</text>");
+        sb.Append($"<line x1=\"{panelW + panelGap / 2}\" y1=\"{mt}\" x2=\"{panelW + panelGap / 2}\" y2=\"{H - 10}\" stroke=\"rgba(255,255,255,0.15)\" stroke-width=\"1\"/>");
+
+        void DrawPanel(List<WordCountDto> words, int offsetX, string color, int maxVal)
+        {
+            for (int i = 0; i < words.Count; i++)
+            {
+                int y = mt + i * (barH + gap);
+                double w = (double)words[i].Count * barAreaW / maxVal;
+                sb.Append($"<text x=\"{offsetX + labelW - 5}\" y=\"{y + barH / 2 + 4}\" text-anchor=\"end\" fill=\"#e5e7eb\" font-size=\"10\">{words[i].Word}</text>");
+                sb.Append($"<rect x=\"{offsetX + labelW}\" y=\"{y}\" width=\"{barAreaW}\" height=\"{barH}\" fill=\"rgba(255,255,255,0.04)\" rx=\"3\"/>");
+                if (w > 0) sb.Append($"<rect x=\"{offsetX + labelW}\" y=\"{y}\" width=\"{w:F1}\" height=\"{barH}\" fill=\"{color}\" rx=\"3\"/>");
+                sb.Append($"<text x=\"{offsetX + labelW + w + 4:F1}\" y=\"{y + barH / 2 + 4}\" fill=\"#9ca3af\" font-size=\"9\">{words[i].Count}</text>");
+            }
+        }
+
+        DrawPanel(posW, 0, "#4ade80", maxPos);
+        DrawPanel(negW, panelW + panelGap, "#f87171", maxNeg);
+
+        sb.Append("</svg>");
+        return (MarkupString)sb.ToString();
+    }
+}

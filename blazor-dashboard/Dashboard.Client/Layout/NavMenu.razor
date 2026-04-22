@@ -1,15 +1,30 @@
 <MudNavMenu>
-    <MudNavLink Href="" Match="NavLinkMatch.All"
-                Icon="@Icons.Material.Filled.Dashboard">
-        Запуски
-    </MudNavLink>
-    <MudNavLink Href="files"
-                Icon="@Icons.Material.Filled.FolderOpen">
-        Файли Pipeline
-    </MudNavLink>
-    <MudDivider Class="my-2" />
+
     <MudNavLink Href="airflow"
                 Icon="@Icons.Material.Filled.Air">
         Apache Airflow
     </MudNavLink>
+    <MudNavLink Href="files"
+                Icon="@Icons.Material.Filled.FolderOpen">
+        Файли із Dag Pipeline
+    </MudNavLink>
+    <MudNavLink Href="yelp-import"
+                Icon="@Icons.Material.Filled.Storage">
+        Імпорт JSON в Yelp DB
+    </MudNavLink>
+
+    <MudDivider Class="my-2" />
+
+    <MudNavLink Href="" Match="NavLinkMatch.All"
+                Icon="@Icons.Material.Filled.Dashboard">
+        Запуски Apache Airflow
+    </MudNavLink>
+    <MudNavLink Href="business-analysis"
+                Icon="@Icons.Material.Filled.BusinessCenter">
+        Аналіз бізнесу
+    </MudNavLink>
+
+
+    <MudDivider Class="my-2" />
+
 </MudNavMenu>

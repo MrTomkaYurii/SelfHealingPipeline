@@ -1,0 +1,204 @@
+@page "/yelp-import"
+@inject HttpClient Http
+@implements IAsyncDisposable
+@using Dashboard.Client.Models
+
+<PageTitle>Імпорт Yelp DB</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-1">Імпорт Yelp Dataset → DuckDB</MudText>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+    Джерело: <code>airflow-pipeline/input/yelp_academic_dataset_*.json</code> &nbsp;→&nbsp;
+    <code>input/yelp.duckdb</code>
+</MudText>
+
+@if (_status == null)
+{
+    <div class="d-flex justify-center" style="height:200px; align-items:center">
+        <MudProgressCircular Indeterminate="true" Color="Color.Primary" Size="Size.Large" />
+    </div>
+}
+else
+{
+    <!-- Таблиця файлів -->
+    <MudPaper Elevation="2" Class="pa-4 mb-4">
+        <MudTable Items="_status.Files" Hover="false" Dense="true" Elevation="0" T="FileStatusDto">
+            <HeaderContent>
+                <MudTh>Таблиця</MudTh>
+                <MudTh Style="width:140px">Статус</MudTh>
+                <MudTh>Деталі</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Таблиця">
+                    <MudText Typo="Typo.body1"><strong>@context.TableName</strong></MudText>
+                </MudTd>
+                <MudTd DataLabel="Статус">
+                    @switch (context.Status)
+                    {
+                        case "pending":
+                            <MudChip T="string" Color="Color.Default" Size="Size.Small" Icon="@Icons.Material.Filled.HourglassEmpty">Очікування</MudChip>
+                            break;
+                        case "running":
+                            <div class="d-flex align-center gap-2">
+                                <MudProgressCircular Size="Size.Small" Indeterminate="true" Color="Color.Primary" />
+                                <MudText Typo="Typo.body2" Color="Color.Primary">Імпортується</MudText>
+                            </div>
+                            break;
+                        case "done":
+                            <MudChip T="string" Color="Color.Success" Size="Size.Small" Icon="@Icons.Material.Filled.CheckCircle">Готово</MudChip>
+                            break;
+                        case "error":
+                            <MudChip T="string" Color="Color.Error" Size="Size.Small" Icon="@Icons.Material.Filled.Error">Помилка</MudChip>
+                            break;
+                        case "skipped":
+                            <MudChip T="string" Color="Color.Warning" Size="Size.Small" Icon="@Icons.Material.Filled.Warning">Пропущено</MudChip>
+                            break;
+                    }
+                </MudTd>
+                <MudTd DataLabel="Деталі">
+                    <MudText Typo="Typo.body2" Color="@(context.Status == "error" ? Color.Error : Color.Default)">
+                        @context.Message
+                    </MudText>
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    </MudPaper>
+
+    <!-- Загальний прогрес -->
+    <MudPaper Elevation="2" Class="pa-4 mb-4">
+        <div class="d-flex justify-space-between align-center mb-2">
+            <MudText Typo="Typo.subtitle1">Загальний прогрес</MudText>
+            <MudText Typo="Typo.body2">@((int)(_status.OverallProgress * 100))%</MudText>
+        </div>
+        <MudProgressLinear Value="@(_status.OverallProgress * 100)"
+                           Color="@(_status.IsCancelled ? Color.Warning : _status.IsCompleted ? Color.Success : Color.Primary)"
+                           Rounded="true" Size="Size.Large" Class="mb-4" />
+
+        <!-- Кнопки керування -->
+        <div class="d-flex gap-3 flex-wrap">
+            @if (!_status.IsRunning)
+            {
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           Size="Size.Large"
+                           StartIcon="@Icons.Material.Filled.CloudUpload"
+                           OnClick="@(() => StartImport(false))"
+                           Disabled="@_status.IsCompleted">
+                    Почати імпорт
+                </MudButton>
+
+                @if (_status.IsCompleted || _status.IsCancelled ||
+                     _status.Files.Any(f => f.Status is "done" or "error" or "skipped"))
+                {
+                    <MudButton Variant="Variant.Outlined"
+                               Color="Color.Warning"
+                               Size="Size.Large"
+                               StartIcon="@Icons.Material.Filled.Refresh"
+                               OnClick="@(() => StartImport(true))">
+                        Почати заново
+                    </MudButton>
+                }
+            }
+            else
+            {
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Error"
+                           Size="Size.Large"
+                           StartIcon="@Icons.Material.Filled.Cancel"
+                           OnClick="CancelImport">
+                    Скасувати
+                </MudButton>
+            }
+        </div>
+    </MudPaper>
+
+    <!-- Лог виконання -->
+    <MudPaper Elevation="2" Class="pa-4">
+        <MudText Typo="Typo.subtitle1" Class="mb-2">Лог виконання</MudText>
+        <div style="height:300px; overflow-y:auto; font-family:monospace; font-size:0.8rem;
+                    background:#1a1a2e; color:#e0e0e0; padding:12px; border-radius:4px;"
+             @ref="_logContainer">
+            @if (_status.Log.Count == 0)
+            {
+                <span style="color:#666">— Лог порожній —</span>
+            }
+            else
+            {
+                @foreach (var line in _status.Log)
+                {
+                    <div style="@GetLogLineStyle(line)">@line</div>
+                }
+            }
+        </div>
+    </MudPaper>
+}
+
+@code {
+    private ImportStatusDto? _status;
+    private PeriodicTimer?   _timer;
+    private ElementReference _logContainer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshStatus();
+        if (_status?.IsRunning == true)
+            _ = PollWhileRunning();
+    }
+
+    private async Task RefreshStatus()
+    {
+        try
+        {
+            _status = await Http.GetFromJsonAsync<ImportStatusDto>("api/yelp-import/status");
+        }
+        catch { }
+    }
+
+    private async Task StartImport(bool reset)
+    {
+        await Http.PostAsync($"api/yelp-import/start?reset={reset}", null);
+        await RefreshStatus();
+        StateHasChanged();
+        _ = PollWhileRunning();
+    }
+
+    private async Task CancelImport()
+    {
+        await Http.PostAsync("api/yelp-import/cancel", null);
+    }
+
+    private async Task PollWhileRunning()
+    {
+        _timer?.Dispose();
+        _timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+        try
+        {
+            while (await _timer.WaitForNextTickAsync())
+            {
+                await RefreshStatus();
+                StateHasChanged();
+                if (_status?.IsRunning == false) break;
+            }
+        }
+        catch (OperationCanceledException) { }
+        finally
+        {
+            _timer?.Dispose();
+            _timer = null;
+        }
+    }
+
+    private static string GetLogLineStyle(string line)
+    {
+        if (line.Contains("✓") || line.Contains("завершено")) return "color:#4caf50";
+        if (line.Contains("✗") || line.Contains("помилка") || line.Contains("Помилка") || line.Contains("Критична")) return "color:#f44336";
+        if (line.Contains("⚠") || line.Contains("скасован")) return "color:#ff9800";
+        if (line.Contains("===")) return "color:#90caf9; font-weight:bold";
+        return "";
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _timer?.Dispose();
+        await Task.CompletedTask;
+    }
+}

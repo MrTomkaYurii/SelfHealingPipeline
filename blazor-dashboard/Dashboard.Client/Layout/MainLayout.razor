@@ -8,7 +8,13 @@
 <MudDialogProvider />
 <MudSnackbarProvider />
 
-@if (!Auth.IsAuthenticated)
+@if (!Auth.Initialized)
+{
+    <div class="d-flex justify-center align-center" style="min-height: 100vh;">
+        <MudProgressCircular Indeterminate="true" Size="Size.Large" Color="Color.Primary" />
+    </div>
+}
+else if (!Auth.IsAuthenticated)
 {
     @Body
 }
@@ -49,34 +55,34 @@ else
 @code {
     private bool _drawerOpen = true;
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         Auth.StateChanged += OnAuthChanged;
+        await Auth.InitializeAsync();
         RedirectIfNeeded();
-    }
-
-    protected override void OnAfterRender(bool firstRender)
-    {
-        if (firstRender) RedirectIfNeeded();
     }
 
     private void RedirectIfNeeded()
     {
         var uri = Navigation.Uri;
-        if (!Auth.IsAuthenticated && !uri.Contains("/login"))
+        if (Auth.Initialized && !Auth.IsAuthenticated && !uri.Contains("/login"))
             Navigation.NavigateTo("/login", replace: true);
+        else if (Auth.Initialized && Auth.IsAuthenticated && uri.Contains("/login"))
+            Navigation.NavigateTo("/", replace: true);
     }
 
     private void OnAuthChanged()
     {
-        InvokeAsync(StateHasChanged);
-        if (!Auth.IsAuthenticated)
-            Navigation.NavigateTo("/login", replace: true);
+        InvokeAsync(() =>
+        {
+            StateHasChanged();
+            RedirectIfNeeded();
+        });
     }
 
     private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
 
-    private void Logout() => Auth.Logout();
+    private async Task Logout() => await Auth.LogoutAsync();
 
     public void Dispose() => Auth.StateChanged -= OnAuthChanged;
 }
