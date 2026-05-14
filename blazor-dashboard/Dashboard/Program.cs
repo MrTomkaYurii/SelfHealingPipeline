@@ -32,7 +32,7 @@ else
 }
 
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
-app.UseHttpsRedirection();
+// HTTP only — HTTPS redirect removed (Airflow iframe requires same protocol)
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseAntiforgery();

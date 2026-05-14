@@ -312,6 +312,10 @@ cd blazor-dashboard
 dotnet run --project Dashboard
 ```
 
+Opens at **http://localhost:5236**.
+
+> The dashboard runs on HTTP (not HTTPS) — this is required for the embedded Airflow iframe to work without mixed-content browser blocks.
+
 The dashboard reads output files from the `airflow-pipeline/output/` directory and provides charts and tables for sentiment results, health metrics, and healing statistics.
 
 ---

@@ -17,6 +17,23 @@ public class FileTreeController : ControllerBase
             : Path.GetFullPath(Path.Combine(env.ContentRootPath, configPath));
     }
 
+    private static readonly HashSet<string> SkipDirs = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".venv", "venv", "__pycache__", ".git", "node_modules",
+        "bin", "obj", ".vs", ".vscode", "logs", "scripts"
+    };
+
+    private static readonly HashSet<string> SkipExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".db", ".db-shm", ".db-wal", ".pyc", ".pyo",
+        ".generated", ".cfg", ".ini"
+    };
+
+    private static readonly HashSet<string> SkipFileNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "simple_auth_manager_passwords.json.generated"
+    };
+
     [HttpGet]
     public ActionResult<FileNode> GetTree()
     {
@@ -36,10 +53,11 @@ public class FileTreeController : ControllerBase
             LastModified = di.LastWriteTime
         };
 
-        if (depth >= 5) return node;
+        if (depth >= 4) return node;
 
-        foreach (var dir in Directory.GetDirectories(path).OrderBy(d => Path.GetFileName(d)))
+        foreach (var dir in Directory.GetDirectories(path).OrderBy(Path.GetFileName))
         {
+            if (SkipDirs.Contains(Path.GetFileName(dir))) continue;
             try { node.Children.Add(BuildNode(dir, depth + 1)); }
             catch { }
         }
@@ -47,6 +65,8 @@ public class FileTreeController : ControllerBase
         foreach (var file in Directory.GetFiles(path).OrderBy(f => f))
         {
             var fi = new FileInfo(file);
+            if (SkipExtensions.Contains(fi.Extension)) continue;
+            if (SkipFileNames.Contains(fi.Name)) continue;
             node.Children.Add(new FileNode
             {
                 Name = fi.Name,
