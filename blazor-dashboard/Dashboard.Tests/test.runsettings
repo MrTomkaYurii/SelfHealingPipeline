@@ -2,6 +2,29 @@
 <RunSettings>
   <DataCollectionRunSettings>
     <DataCollectors>
+      <DataCollector friendlyName="XPlat Code Coverage">
+        <Configuration>
+          <!-- Include only the server project -->
+          <Include>[Dashboard]*</Include>
+          <!-- Exclude generated, Blazor client, and infrastructure -->
+          <Exclude>[Dashboard.Client]*,[*.Tests]*</Exclude>
+          <ExcludeByFile>
+            **/obj/**/*.cs,
+            **/*.g.cs,
+            **/*.g.i.cs,
+            **/Program.cs,
+            **/Migrations/**
+          </ExcludeByFile>
+          <ExcludeByAttribute>
+            GeneratedCodeAttribute,
+            CompilerGeneratedAttribute,
+            ObsoleteAttribute
+          </ExcludeByAttribute>
+          <SingleHit>false</SingleHit>
+          <UseSourceLink>false</UseSourceLink>
+          <IncludeTestAssembly>false</IncludeTestAssembly>
+        </Configuration>
+      </DataCollector>
     </DataCollectors>
   </DataCollectionRunSettings>
 </RunSettings>

@@ -54,23 +54,48 @@ Write-Host "[2/2] .NET unit tests (xUnit)" -ForegroundColor Yellow
 
 Push-Location (Join-Path $root "blazor-dashboard")
 try {
-    # Build first (coverage target bug requires build+test separately)
+    # Build first (MSB3492 workaround: build separately, then test --no-build)
     dotnet build Dashboard.Tests -q 2>&1 | Out-Null
+
+    # Clean previous coverage runs so we always get a fresh GUID folder
+    $coverageDir = "$reports\dotnet\coverage"
+    if (Test-Path $coverageDir) { Remove-Item $coverageDir -Recurse -Force }
+    New-Item -ItemType Directory -Force -Path $coverageDir | Out-Null
+
     dotnet test Dashboard.Tests --no-build `
+        --settings Dashboard.Tests/test.runsettings `
+        --collect:"XPlat Code Coverage" `
+        --results-directory $coverageDir `
         --logger "html;logfilename=$reports\dotnet\report.html" `
         -v normal 2>&1
 
     if ($LASTEXITCODE -ne 0) { $dotnetOk = $false }
 
-    # Generate readable coverage report if reportgenerator is available
-    $coverage = Get-ChildItem "$reports\dotnet\coverage" -Recurse -Filter "coverage.cobertura.xml" |
-                Select-Object -First 1
-    if ($coverage) {
-        dotnet reportgenerator `
-            -reports:$coverage.FullName `
-            -targetdir:"$reports\dotnet\coverage-html" `
-            -reporttypes:Html 2>&1 | Out-Null
-        Write-Host "  Coverage HTML: $reports\dotnet\coverage-html\index.html" -ForegroundColor DarkGray
+    # Generate readable coverage report via reportgenerator global tool
+    $coverageXml = Get-ChildItem $coverageDir -Recurse -Filter "coverage.cobertura.xml" |
+                   Select-Object -First 1
+    if ($coverageXml) {
+        $coverageHtmlDir = "$reports\dotnet\coverage-html"
+        if (Test-Path $coverageHtmlDir) { Remove-Item $coverageHtmlDir -Recurse -Force }
+
+        $rgArgs = @(
+            "-reports:$($coverageXml.FullName)",
+            "-targetdir:$coverageHtmlDir",
+            "-reporttypes:Html;HtmlSummary",
+            "-assemblyfilters:+Dashboard;-Dashboard.Tests;-Dashboard.Client",
+            "-classfilters:-Dashboard.Components*",
+            "-sourcedirs:$(Join-Path $root 'blazor-dashboard')"
+        )
+
+        $rgCmd = Get-Command reportgenerator -ErrorAction SilentlyContinue
+        if ($rgCmd) {
+            & reportgenerator @rgArgs 2>&1 | Out-Null
+            Write-Host "  Coverage HTML : $coverageHtmlDir\index.html" -ForegroundColor DarkGray
+            Write-Host "  Coverage XML  : $($coverageXml.FullName)" -ForegroundColor DarkGray
+        } else {
+            Write-Host "  SKIP coverage HTML — reportgenerator not found" -ForegroundColor DarkYellow
+            Write-Host "  Run: dotnet tool install -g dotnet-reportgenerator-globaltool" -ForegroundColor DarkYellow
+        }
     }
 } finally {
     Pop-Location
@@ -94,6 +119,7 @@ Write-Host ""
 Write-Host "  Reports:" -ForegroundColor Gray
 Write-Host "    Python  → $reports\python\report.html" -ForegroundColor Gray
 Write-Host "    .NET    → $reports\dotnet\report.html" -ForegroundColor Gray
+Write-Host "    .NET cov→ $reports\dotnet\coverage-html\index.html" -ForegroundColor Gray
 Write-Host ""
 
 if (-not $pythonOk -or -not $dotnetOk) {
