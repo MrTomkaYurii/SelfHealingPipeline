@@ -14,4 +14,9 @@
     <PackageReference Include="DuckDB.NET.Data.Full" Version="1.2.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Remove="wwwroot\desktop.ini" />
+    <None Remove="wwwroot\desktop.ini" />
+  </ItemGroup>
+
 </Project>

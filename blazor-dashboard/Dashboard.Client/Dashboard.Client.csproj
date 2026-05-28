@@ -14,4 +14,9 @@
     <PackageReference Include="MudBlazor" Version="9.3.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Remove="wwwroot\desktop.ini" />
+    <None Remove="wwwroot\desktop.ini" />
+  </ItemGroup>
+
 </Project>
