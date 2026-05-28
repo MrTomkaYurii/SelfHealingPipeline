@@ -1,5 +1,0 @@
-1. if u will need a passwaord, that will be generated for docker container
-    docker-compose exec airflow cat /opt/airflow/simple_auth_manager_passwords.json.generated
-
-answer will be lika this:   {"admin": "v9D3NNqTHFTsTx4B"}
-                            {"admin": "aW5chZSg5x6h8Cpf"}
