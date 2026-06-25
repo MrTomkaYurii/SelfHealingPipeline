@@ -26,6 +26,9 @@ airflow-pipeline/logs/
 # ДАНІ — великі файли, які не треба тримати в репо
 # =============================================================================
 
+# Великі відео (>100MB — ліміт GitHub)
+_diploma/_video/
+
 # DuckDB база даних
 airflow-pipeline/dags/*.duckdb
 airflow-pipeline/dags/*.duckdb-shm
